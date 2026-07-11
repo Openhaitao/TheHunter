@@ -25,19 +25,6 @@ export default function App() {
 
   return (
     <div className="flex h-full flex-col bg-[#f6f5f1] text-sm text-[#171717]">
-      <header className="flex items-center justify-between border-b border-[#deddd8] bg-[#faf9f6] px-4 py-3">
-        <div className="flex items-center gap-2.5">
-          <span className="grid h-8 w-8 place-items-center rounded-lg border border-[#d7d7d2] bg-white">
-            <img src="/icon-32.png" alt="" className="h-6 w-6" />
-          </span>
-          <div className="leading-none">
-            <span className="block text-base font-semibold tracking-tight">TheHunter</span>
-            <span className="mt-1 block font-mono text-[8px] tracking-[0.12em] text-[#8b8b86]">AGENT-NATIVE CLIPPER</span>
-          </div>
-        </div>
-        <span className="rounded-md border border-[#deddd8] bg-white px-2 py-1 font-mono text-[9px] text-[#777772]">BETA_02</span>
-      </header>
-
       <div className="flex min-h-0 flex-1">
         <main className="min-w-0 flex-1 overflow-y-auto">
           {tab === 'capture' && <CaptureTab />}
@@ -61,7 +48,6 @@ export default function App() {
               <span>{t.label}</span>
             </button>
           ))}
-          <span className="mt-auto pb-1 text-center font-mono text-[8px] leading-tight text-[#b0b0aa]">TH<br />02</span>
         </nav>
       </div>
     </div>
