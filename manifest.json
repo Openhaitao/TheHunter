@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "UniHunter",
+  "name": "TheHunter",
   "version": "1.0.0",
   "description": "智能提取网页联系人和产品信息，通过 AI 分析后自动同步到飞书多维表格",
   "permissions": [
@@ -14,7 +14,7 @@
   ],
   "action": {
     "default_popup": "index.html",
-    "default_title": "UniHunter - 智能信息提取"
+    "default_title": "TheHunter - 智能信息提取"
   },
   "options_page": "options.html",
   "icons": {
@@ -22,6 +22,6 @@
     "48": "public/icon-48.png",
     "128": "public/icon-128.png"
   },
-  "homepage_url": "https://github.com/yourusername/unihunter"
+  "homepage_url": "https://github.com/yourusername/thehunter"
 }
 

@@ -97,7 +97,7 @@ const Popup: React.FC = () => {
   return (
     <div className="popup-container">
       <div className="header">
-        <Title level={4} style={{ margin: 0, color: '#4F46E5' }}>UniHunter</Title>
+        <Title level={4} style={{ margin: 0, color: '#4F46E5' }}>TheHunter</Title>
         <Button type="text" icon={<SettingOutlined />} onClick={openOptions} />
       </div>
 

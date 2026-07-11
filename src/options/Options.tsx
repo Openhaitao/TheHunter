@@ -44,7 +44,7 @@ const Options: React.FC = () => {
 
   return (
     <div style={{ maxWidth: 800, margin: '40px auto', padding: '0 20px' }}>
-      <Title level={2} style={{ textAlign: 'center', marginBottom: 40 }}>UniHunter 设置</Title>
+      <Title level={2} style={{ textAlign: 'center', marginBottom: 40 }}>TheHunter 设置</Title>
       
       <Card title="API 配置" bordered={false}>
         <Form
@@ -113,7 +113,7 @@ const Options: React.FC = () => {
       </Card>
       
       <div style={{ marginTop: 20, textAlign: 'center', color: '#999' }}>
-        <Text type="secondary">UniHunter v1.0.0</Text>
+        <Text type="secondary">TheHunter v1.0.0</Text>
       </div>
     </div>
   );

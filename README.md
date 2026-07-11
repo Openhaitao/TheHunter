@@ -1,4 +1,4 @@
-# UniHunter Chrome Extension
+# TheHunter Chrome Extension
 
 这是一个用于投资人的 Chrome 浏览器插件，可以一键提取网页信息（联系人/产品），通过 LLM 智能分析后推送到飞书多维表格。
 
