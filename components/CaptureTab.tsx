@@ -63,26 +63,27 @@ export default function CaptureTab() {
   }
 
   return (
-    <div className="space-y-4 p-4">
+    <div className="space-y-5 p-4">
       <div>
-        <p className="text-[10px] font-black tracking-[0.18em] text-[#2f6bff]">QUICK CAPTURE</p>
-        <h1 className="mt-1 text-2xl font-black leading-none tracking-tight">抓住这个页面。</h1>
+        <p className="font-mono text-[9px] tracking-[0.18em] text-[#92928c]">// QUICK CAPTURE</p>
+        <h1 className="mt-2 text-2xl font-semibold leading-none tracking-tight">抓住这个页面。</h1>
+        <p className="mt-2 text-xs leading-relaxed text-[#777772]">AI 读取当前页面，整理成你需要的结构化数据。</p>
       </div>
       <button
         onClick={handleCapture}
         disabled={phase === 'extracting' || phase === 'sending'}
-        className="w-full border-2 border-black bg-[#ffde59] py-3 text-base font-black shadow-[4px_4px_0_#111] transition hover:-translate-x-0.5 hover:-translate-y-0.5 hover:shadow-[6px_6px_0_#111] active:translate-x-1 active:translate-y-1 active:shadow-none disabled:cursor-not-allowed disabled:opacity-50"
+        className="w-full rounded-xl bg-[#171717] py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.16)] transition hover:bg-black hover:shadow-[0_8px_24px_rgba(0,0,0,0.22)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
       >
         {phase === 'extracting' ? 'AI 提取中…' : '🎯 捕获当前页面'}
       </button>
 
       {candidates.length > 0 && (
         <label className="block">
-          <span className="mb-1.5 block text-[10px] font-black tracking-wider">使用模板 / TEMPLATE</span>
+          <span className="mb-1.5 block font-mono text-[9px] tracking-wider text-[#777772]">TEMPLATE / 使用模板</span>
           <select
             value={template?.id ?? ''}
             onChange={(e) => setTemplateId(e.target.value)}
-            className="w-full border-2 border-black bg-white px-3 py-2 font-bold shadow-[3px_3px_0_#111]"
+            className="w-full rounded-lg border border-[#d9d9d4] bg-white px-3 py-2 font-medium shadow-[0_3px_10px_rgba(0,0,0,0.04)]"
           >
             {candidates.map((t) => (
               <option key={t.id} value={t.id}>
@@ -93,21 +94,21 @@ export default function CaptureTab() {
         </label>
       )}
 
-      {error && <p className="border-2 border-black bg-[#ff76a8] p-3 font-bold shadow-[3px_3px_0_#111]">⚠ {error}</p>}
+      {error && <p className="rounded-lg border border-[#e8c7c7] bg-[#fff7f7] p-3 font-medium text-[#9a3030]">⚠ {error}</p>}
 
       {phase === 'review' && template && page && (
-        <div className="space-y-3 border-2 border-black bg-white p-3 shadow-[5px_5px_0_#111]">
-          <p className="truncate border-b-2 border-black bg-[#b8f397] px-2 py-1.5 text-xs font-bold" title={page.url}>
+        <div className="space-y-3 rounded-xl border border-[#deddd8] bg-white p-3 shadow-[0_8px_30px_rgba(0,0,0,0.06)]">
+          <p className="truncate border-b border-[#ecebe7] px-1 pb-2 text-xs font-medium text-[#666662]" title={page.url}>
             {page.title}
           </p>
           {template.fields.map((f) => (
             <label key={f.key} className="block">
-              <span className="mb-1 block text-xs font-black">{f.label}</span>
+              <span className="mb-1 block text-xs font-medium">{f.label}</span>
               <textarea
                 value={values[f.key] ?? ''}
                 onChange={(e) => setValues((v) => ({ ...v, [f.key]: e.target.value }))}
                 rows={values[f.key] && values[f.key].length > 60 ? 3 : 1}
-                className="w-full resize-y border-2 border-black bg-[#fffdf5] px-2 py-1.5 shadow-[2px_2px_0_#111]"
+                className="w-full resize-y rounded-lg border border-[#d9d9d4] bg-[#fafaf8] px-2 py-1.5"
               />
             </label>
           ))}
@@ -115,7 +116,7 @@ export default function CaptureTab() {
           <button
             onClick={handleSend}
             disabled={phase !== 'review'}
-            className="w-full border-2 border-black bg-[#b8f397] py-2.5 font-black shadow-[4px_4px_0_#111] transition hover:-translate-x-0.5 hover:-translate-y-0.5 disabled:opacity-50"
+            className="w-full rounded-lg bg-[#171717] py-2.5 font-semibold text-white shadow-[0_5px_14px_rgba(0,0,0,0.14)] transition hover:bg-black disabled:opacity-40"
           >
             {template.targets.filter((t) => t.enabled).length > 0
               ? '💾 保存到表格'
@@ -125,7 +126,7 @@ export default function CaptureTab() {
           {outcomes && (
             <ul className="space-y-1 text-xs">
               {outcomes.map((o) => (
-                <li key={o.target.id} className={`border-2 border-black p-2 font-bold ${o.ok ? 'bg-[#b8f397]' : 'bg-[#ff76a8]'}`}>
+                <li key={o.target.id} className={`rounded-md border p-2 font-medium ${o.ok ? 'border-[#cfdcc9] bg-[#f5faf2]' : 'border-[#e8c7c7] bg-[#fff7f7]'}`}>
                   {o.ok ? '✅' : '❌'} {o.target.name}
                   {!o.ok && `：${o.error ?? `HTTP ${o.status}`}`}
                 </li>
@@ -136,9 +137,9 @@ export default function CaptureTab() {
       )}
 
       {phase === 'idle' && (
-        <div className="border-2 border-dashed border-black bg-white/80 px-4 py-6 text-center">
-          <p className="text-3xl">↖</p>
-          <p className="mt-2 text-xs font-bold leading-relaxed">
+        <div className="overflow-hidden rounded-xl border border-[#deddd8] bg-white px-4 py-6 text-center shadow-[0_8px_30px_rgba(0,0,0,0.04)]">
+          <pre className="font-mono text-[10px] leading-[0.85] text-[#a3a39d]" aria-hidden="true">{`  ++++++++  \n ++XXXXXX++ \n+XX  XX  XX+\n+XX  XX  XX+\n +XX@@@@XX+ \n  ++XXXX++  `}</pre>
+          <p className="mt-4 text-xs font-medium leading-relaxed text-[#666662]">
           打开任意网页（LinkedIn、产品官网、文章…），
           <br />
           点上方按钮开始捕获
