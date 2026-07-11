@@ -2,6 +2,8 @@ import { defineConfig } from 'wxt';
 import tailwindcss from '@tailwindcss/vite';
 
 export default defineConfig({
+  // 输出到可见的 dist/（默认 .output 在 macOS 文件选择框里被隐藏）
+  outDir: 'dist',
   modules: ['@wxt-dev/module-react'],
   vite: () => ({
     plugins: [tailwindcss()],
