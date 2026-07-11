@@ -178,7 +178,7 @@ export default function TemplateEditor({
 
       <button
         onClick={() => onSave(t)}
-        className="w-full rounded-lg bg-[#171717] py-2.5 font-semibold text-white shadow-[0_5px_14px_rgba(0,0,0,0.14)]"
+        className="w-full rounded-lg border border-[#c9c9c3] bg-[#ebeae5] py-2.5 font-semibold text-[#171717] shadow-[0_5px_14px_rgba(0,0,0,0.08)]"
       >
         保存模板
       </button>

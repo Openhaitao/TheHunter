@@ -72,7 +72,7 @@ export default function CaptureTab() {
       <button
         onClick={handleCapture}
         disabled={phase === 'extracting' || phase === 'sending'}
-        className="w-full rounded-xl bg-[#171717] py-3 text-sm font-semibold text-white shadow-[0_6px_18px_rgba(0,0,0,0.16)] transition hover:bg-black hover:shadow-[0_8px_24px_rgba(0,0,0,0.22)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
+        className="w-full rounded-xl border border-[#cecec8] bg-white py-3 text-sm font-semibold text-[#171717] shadow-[0_6px_18px_rgba(0,0,0,0.08)] transition hover:border-[#aaa9a3] hover:shadow-[0_8px_24px_rgba(0,0,0,0.12)] active:translate-y-px disabled:cursor-not-allowed disabled:opacity-40"
       >
         {phase === 'extracting' ? 'AI 提取中…' : '🎯 捕获当前页面'}
       </button>
@@ -116,7 +116,7 @@ export default function CaptureTab() {
           <button
             onClick={handleSend}
             disabled={phase !== 'review'}
-            className="w-full rounded-lg bg-[#171717] py-2.5 font-semibold text-white shadow-[0_5px_14px_rgba(0,0,0,0.14)] transition hover:bg-black disabled:opacity-40"
+            className="w-full rounded-lg border border-[#c9c9c3] bg-[#ebeae5] py-2.5 font-semibold text-[#171717] shadow-[0_5px_14px_rgba(0,0,0,0.08)] transition hover:bg-[#e2e1dc] disabled:opacity-40"
           >
             {template.targets.filter((t) => t.enabled).length > 0
               ? '💾 保存到表格'

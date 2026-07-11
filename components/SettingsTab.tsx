@@ -53,7 +53,7 @@ export default function SettingsTab() {
                 targets: [],
               })
             }
-            className="rounded-md bg-[#171717] px-2.5 py-1.5 text-xs font-medium text-white"
+            className="rounded-md border border-[#c9c9c3] bg-[#ebeae5] px-2.5 py-1.5 text-xs font-medium text-[#171717]"
           >
             + 新建
           </button>
@@ -117,7 +117,7 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
           setSaved(true);
           setTimeout(() => setSaved(false), 1500);
         }}
-        className="w-full rounded-lg bg-[#171717] py-2 font-semibold text-white shadow-[0_5px_14px_rgba(0,0,0,0.14)]"
+        className="w-full rounded-lg border border-[#c9c9c3] bg-[#ebeae5] py-2 font-semibold text-[#171717] shadow-[0_5px_14px_rgba(0,0,0,0.08)]"
       >
         {saved ? '✅ 已保存' : '保存 AI 配置'}
       </button>
