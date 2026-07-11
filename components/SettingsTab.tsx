@@ -32,12 +32,16 @@ export default function SettingsTab() {
   }
 
   return (
-    <div className="space-y-5 p-3">
+    <div className="space-y-6 p-4">
+      <div>
+        <p className="text-[10px] font-black tracking-[0.18em] text-[#2f6bff]">MAKE IT YOURS</p>
+        <h1 className="mt-1 text-2xl font-black leading-none">按你的方式狩猎。</h1>
+      </div>
       <AISection settings={settings} onSaved={reloadSettings} />
 
       <section>
         <div className="mb-2 flex items-center justify-between">
-          <h2 className="font-semibold">模板</h2>
+          <h2 className="text-base font-black">模板 / TEMPLATES</h2>
           <button
             onClick={() =>
               setEditing({
@@ -49,7 +53,7 @@ export default function SettingsTab() {
                 targets: [],
               })
             }
-            className="rounded-md bg-blue-600 px-2.5 py-1 text-xs font-medium text-white"
+            className="border-2 border-black bg-[#ff76a8] px-2.5 py-1 text-xs font-black shadow-[2px_2px_0_#111]"
           >
             + 新建
           </button>
@@ -59,15 +63,15 @@ export default function SettingsTab() {
             <li
               key={t.id}
               onClick={() => setEditing(t)}
-              className="cursor-pointer rounded-lg border border-gray-200 bg-white px-3 py-2 hover:border-blue-400"
+              className="cursor-pointer border-2 border-black bg-white px-3 py-2 shadow-[3px_3px_0_#111] transition hover:-translate-x-0.5 hover:-translate-y-0.5 hover:bg-[#ffde59]"
             >
               <div className="flex items-center justify-between">
-                <span className="font-medium">{t.name}</span>
-                <span className="text-xs text-gray-400">
+                <span className="font-black">{t.name}</span>
+                <span className="text-[10px] font-bold">
                   {t.fields.length} 字段 · {t.targets.filter((x) => x.enabled).length} 个目标
                 </span>
               </div>
-              <p className="truncate text-xs text-gray-400">{t.matchers.join('，')}</p>
+              <p className="truncate text-xs font-medium text-gray-500">{t.matchers.join('，')}</p>
             </li>
           ))}
         </ul>
@@ -81,13 +85,13 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
   const [saved, setSaved] = useState(false);
 
   return (
-    <section className="space-y-2">
-      <h2 className="font-semibold">AI 配置（自带 Key）</h2>
+    <section className="space-y-3 border-2 border-black bg-white p-3 shadow-[5px_5px_0_#111]">
+      <h2 className="border-b-2 border-black bg-[#b8f397] px-2 py-1.5 text-base font-black">AI 配置 / BYOK</h2>
       <Field label="API 端点（OpenAI 兼容）">
         <input
           value={ai.baseUrl}
           onChange={(e) => setAi({ ...ai, baseUrl: e.target.value })}
-          className="w-full rounded-md border border-gray-300 px-2 py-1.5"
+          className="w-full border-2 border-black px-2 py-1.5"
         />
       </Field>
       <Field label="API Key">
@@ -96,14 +100,14 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
           value={ai.apiKey}
           onChange={(e) => setAi({ ...ai, apiKey: e.target.value })}
           placeholder="sk-…"
-          className="w-full rounded-md border border-gray-300 px-2 py-1.5"
+          className="w-full border-2 border-black px-2 py-1.5"
         />
       </Field>
       <Field label="模型">
         <input
           value={ai.model}
           onChange={(e) => setAi({ ...ai, model: e.target.value })}
-          className="w-full rounded-md border border-gray-300 px-2 py-1.5"
+          className="w-full border-2 border-black px-2 py-1.5"
         />
       </Field>
       <button
@@ -113,7 +117,7 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
           setSaved(true);
           setTimeout(() => setSaved(false), 1500);
         }}
-        className="w-full rounded-lg bg-blue-600 py-2 font-medium text-white"
+        className="w-full border-2 border-black bg-[#2f6bff] py-2 font-black text-white shadow-[3px_3px_0_#111]"
       >
         {saved ? '✅ 已保存' : '保存 AI 配置'}
       </button>
@@ -124,7 +128,7 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
 export function Field({ label, children }: { label: string; children: React.ReactNode }) {
   return (
     <label className="block">
-      <span className="mb-0.5 block text-xs text-gray-500">{label}</span>
+      <span className="mb-1 block text-xs font-black">{label}</span>
       {children}
     </label>
   );
