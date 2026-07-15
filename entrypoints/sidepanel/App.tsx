@@ -27,7 +27,7 @@ export default function App() {
     <div className="flex h-full flex-col bg-[#f6f5f1] text-sm text-[#171717]">
       <div className="flex min-h-0 flex-1">
         <main className="min-w-0 flex-1 overflow-y-auto">
-          {tab === 'capture' && <CaptureTab />}
+          {tab === 'capture' && <CaptureTab onOpenSettings={() => setTab('settings')} />}
           {tab === 'manage' && <ManageTab />}
           {tab === 'settings' && <SettingsTab />}
         </main>
@@ -38,6 +38,7 @@ export default function App() {
               key={t.id}
               onClick={() => setTab(t.id)}
               title={t.label}
+              aria-current={tab === t.id ? 'page' : undefined}
               className={`flex flex-col items-center gap-1.5 rounded-xl border px-1 py-3 text-[10px] font-medium transition ${
                 tab === t.id
                   ? 'border-[#cecec8] bg-white text-[#171717] shadow-[0_4px_14px_rgba(0,0,0,0.07)]'

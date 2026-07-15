@@ -119,7 +119,7 @@ function AISection({ settings, onSaved }: { settings: Settings; onSaved: () => v
         }}
         className="w-full rounded-lg border border-[#c9c9c3] bg-[#ebeae5] py-2 font-semibold text-[#171717] shadow-[0_5px_14px_rgba(0,0,0,0.08)]"
       >
-        {saved ? '✅ 已保存' : '保存 AI 配置'}
+        {saved ? '已保存' : '保存 AI 配置'}
       </button>
     </section>
   );
