@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import ParsePage from '../../components/ParsePage';
 
 type Tool = 'parse' | 'settings';
 
@@ -72,7 +73,9 @@ export default function App() {
 
   return (
     <div className="flex h-full bg-[#f6f5f1] text-[#171717]">
-      <main className="min-w-0 flex-1" aria-label={tool === 'parse' ? '解析' : '设置'} />
+      <main className="min-w-0 flex-1" aria-label={tool === 'parse' ? '解析' : '设置'}>
+        {tool === 'parse' && <ParsePage />}
+      </main>
 
       <nav
         aria-label="工具"

@@ -12,6 +12,7 @@ export default defineConfig({
     name: 'TheHunter',
     description: 'LinkedIn 人才信息采集工具',
     permissions: ['sidePanel'],
+    host_permissions: ['https://www.linkedin.com/in/*'],
     action: { default_title: 'TheHunter - 打开侧边栏' },
     icons: {
       16: 'icon-16.png',
