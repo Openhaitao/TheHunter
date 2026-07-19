@@ -2,12 +2,30 @@ import { useState } from 'react';
 
 type Tool = 'parse' | 'settings';
 
+function ParseIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-[18px] w-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.6"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M4.5 8V5.5a1 1 0 0 1 1-1H8M16 4.5h2.5a1 1 0 0 1 1 1V8M19.5 16v2.5a1 1 0 0 1-1 1H16M8 19.5H5.5a1 1 0 0 1-1-1V16" />
+      <path d="M13.8 8.2c.3 1.15.85 1.7 2 2-.95.25-1.65.9-2 2-.3-1.1-.95-1.75-2-2 1.1-.3 1.7-.9 2-2Z" />
+    </svg>
+  );
+}
+
 function SettingsIcon() {
   return (
     <svg
       aria-hidden="true"
       viewBox="0 0 24 24"
-      className="h-5 w-5"
+      className="h-[18px] w-[18px]"
       fill="none"
       stroke="currentColor"
       strokeWidth="1.7"
@@ -38,10 +56,10 @@ function ToolButton({
       aria-pressed={active}
       title={label}
       onClick={onClick}
-      className={`flex h-11 w-11 items-center justify-center rounded-xl border transition-colors ${
+      className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors ${
         active
-          ? 'border-[#d3d2cc] bg-white text-[#171717] shadow-[0_3px_12px_rgba(0,0,0,0.06)]'
-          : 'border-transparent text-[#8d8c86] hover:border-[#e2e1dc] hover:bg-white hover:text-[#171717]'
+          ? 'bg-[#ecebe6] text-[#242421]'
+          : 'text-[#aaa9a3] hover:bg-[#f0efeb] hover:text-[#4a4945]'
       }`}
     >
       {icon}
@@ -58,11 +76,11 @@ export default function App() {
 
       <nav
         aria-label="工具"
-        className="flex w-16 shrink-0 flex-col items-center justify-between border-l border-[#deddd8] bg-[#faf9f6] px-2 py-3"
+        className="flex w-[52px] shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2.5"
       >
         <ToolButton
           active={tool === 'parse'}
-          icon={<span aria-hidden="true" className="text-lg leading-none">✨</span>}
+          icon={<ParseIcon />}
           label="解析"
           onClick={() => setTool('parse')}
         />
