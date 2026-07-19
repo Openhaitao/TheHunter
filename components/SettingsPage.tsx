@@ -75,6 +75,34 @@ function SettingTextarea({
   );
 }
 
+function SettingsSection({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <details className="group border-b border-[#dfded8] py-1">
+      <summary className="flex cursor-pointer list-none items-center justify-between gap-4 py-3.5 [&::-webkit-details-marker]:hidden">
+        <span>
+          <span className="block text-[12px] font-medium text-[#2c2c28]">{title}</span>
+          <span className="mt-1 block text-[10px] leading-4 text-[#9a9993]">{description}</span>
+        </span>
+        <span
+          aria-hidden="true"
+          className="shrink-0 text-[14px] text-[#8f8e88] transition-transform group-open:rotate-180"
+        >
+          ⌄
+        </span>
+      </summary>
+      <div className="pb-5 pt-2">{children}</div>
+    </details>
+  );
+}
+
 function normalizeHttpsUrl(value: string) {
   const url = new URL(value.trim());
   if (url.protocol !== 'https:') throw new Error('HTTPS required');
@@ -238,21 +266,17 @@ export default function SettingsPage() {
 
   return (
     <div className="scrollbar-hidden h-full overflow-y-auto px-4 py-4">
-      <div className="mx-auto max-w-[460px] space-y-7">
-        <section>
-          <div className="mb-4">
-            <h2 className="m-0 text-[12px] font-medium text-[#2c2c28]">AI 解析</h2>
-            <p className="mb-0 mt-1 text-[10px] leading-4 text-[#9a9993]">
-              支持 OpenAI-compatible API；人物页内容仅在点击 AI 解析时发送。
-            </p>
-          </div>
-
+      <div className="mx-auto max-w-[460px]">
+        <SettingsSection
+          title="AI 解析"
+          description="OpenAI-compatible API；仅在点击 AI 解析时发送人物页内容。"
+        >
           <div className="space-y-3.5">
             <SettingField
               label="API 地址（Base URL）"
               type="url"
               value={aiConfig.baseUrl}
-              placeholder="https://api.siliconflow.cn/v1"
+              placeholder="https://api.openai.com/v1"
               onChange={(value) => updateAiConfig('baseUrl', value)}
             />
             <SettingField
@@ -265,7 +289,7 @@ export default function SettingsPage() {
             <SettingField
               label="Model ID"
               value={aiConfig.model}
-              placeholder="例如：Qwen/Qwen3-8B"
+              placeholder="例如：gpt-5.6"
               onChange={(value) => updateAiConfig('model', value)}
             />
           </div>
@@ -305,16 +329,12 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </section>
+        </SettingsSection>
 
-        <section className="border-t border-[#dfded8] pt-5">
-          <div className="mb-4">
-            <h2 className="m-0 text-[12px] font-medium text-[#2c2c28]">飞书多维表格</h2>
-            <p className="mb-0 mt-1 text-[10px] leading-4 text-[#9a9993]">
-              配置 Webhook，并将飞书字段名映射到插件内部字段。
-            </p>
-          </div>
-
+        <SettingsSection
+          title="飞书多维表格"
+          description="配置 Webhook，并将飞书字段名映射到插件内部字段。"
+        >
           <SettingField
             label="飞书 Webhook"
             type="url"
@@ -364,16 +384,12 @@ export default function SettingsPage() {
                     : '保存'}
             </button>
           </div>
-        </section>
+        </SettingsSection>
 
-        <section className="border-t border-[#dfded8] pt-5">
-          <div className="mb-4">
-            <h2 className="m-0 text-[12px] font-medium text-[#2c2c28]">提示词管理</h2>
-            <p className="mb-0 mt-1 text-[10px] leading-4 text-[#9a9993]">
-              控制有效 DOM 如何映射为人才字段；解析结果仍需人工确认。
-            </p>
-          </div>
-
+        <SettingsSection
+          title="提示词管理"
+          description="控制有效 DOM 如何映射为人才字段；解析结果仍需人工确认。"
+        >
           <SettingTextarea
             label="系统提示词"
             value={promptConfig.content}
@@ -415,7 +431,7 @@ export default function SettingsPage() {
               </button>
             </div>
           </div>
-        </section>
+        </SettingsSection>
       </div>
     </div>
   );
