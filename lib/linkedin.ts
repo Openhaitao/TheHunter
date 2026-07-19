@@ -44,7 +44,12 @@ export function collectLinkedInDebugSnapshot() {
     introText: clean((intro as HTMLElement | null)?.innerText).slice(0, 3000),
     experienceText: clean((experience as HTMLElement | null)?.innerText).slice(0, 3000),
     experienceLinks: describe('a', experience ?? document).filter((item) => item.href),
-    contactLinks: describe('a[href*="/overlay/contact-info/"]'),
+    contactLinks: [
+      ...describe('a[href*="/overlay/contact-info/"]'),
+      ...describe('button, [role="button"], a').filter((item) =>
+        /^(联系方式|contact info)$/i.test(item.text),
+      ),
+    ],
     dialogs: describe('[role="dialog"]'),
   }, null, 2);
 }
@@ -165,11 +170,17 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     let openedByExtractor = false;
 
     if (!dialog) {
-      const contactLink = document.querySelector<HTMLAnchorElement>(
-        'a[href*="/overlay/contact-info/"]',
+      const contactLabel = Array.from(document.querySelectorAll<HTMLElement>('main *')).find(
+        (element) =>
+          element.children.length === 0 &&
+          /^(联系方式|contact info)$/i.test(cleanText(element.innerText || element.textContent)),
       );
-      if (contactLink) {
-        contactLink.click();
+      const contactTrigger =
+        document.querySelector<HTMLElement>('a[href*="/overlay/contact-info/"]') ??
+        contactLabel?.closest<HTMLElement>('a, button, [role="button"], [role="link"]') ??
+        contactLabel;
+      if (contactTrigger) {
+        contactTrigger.click();
         openedByExtractor = true;
         dialog = await new Promise<Element | null>((resolve) => {
           const existing = findContactDialog();
@@ -231,6 +242,20 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
 
   const main = document.querySelector('main') ?? document.documentElement;
   const nameElement = document.querySelector('h1.text-heading-xlarge, h1[data-anonymize="person-name"], main h1');
+  const profilePath = location.pathname.replace(/\/overlay\/contact-info\/?$/, '/');
+  const identityAnchor = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).find(
+    (anchor) => {
+      try {
+        const url = new URL(anchor.href, location.href);
+        return url.hostname.endsWith('linkedin.com') &&
+          url.pathname.replace(/\/$/, '') === profilePath.replace(/\/$/, '') &&
+          cleanLines(anchor).length >= 2;
+      } catch {
+        return false;
+      }
+    },
+  );
+  const identityLines = cleanLines(identityAnchor ?? null);
   const intro =
     nameElement?.closest('section') ??
     document.querySelector('a[href*="/overlay/contact-info/"]')?.closest('section') ??
@@ -244,7 +269,7 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     'h1.top-card-layout__title',
     'h1.break-words',
     'main h1',
-  ]) || titleName;
+  ]) || identityLines[0] || titleName;
 
   let headline = firstText(intro, [
     '.text-body-medium.break-words',
@@ -252,6 +277,8 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     '.top-card-layout__headline',
     '[data-generated-suggestion-target]',
   ]);
+
+  if (!headline && identityLines[1]) headline = identityLines[1];
 
   if (!headline) {
     const introLines = cleanLines(intro, [name, '联系方式', 'Contact info']);
@@ -293,7 +320,31 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
       ])
     : '';
 
-  const company = cleanText((companyFromIntro || companyFromExperience).split('·')[0]);
+  const companyFromSemanticLink = (() => {
+    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]'));
+    for (const link of links) {
+      const lines = cleanLines(link);
+      if (lines.length === 0) continue;
+
+      const companyAndType = lines.find((line, index) => {
+        if (index === 0 || !line.includes('·')) return false;
+        return !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line);
+      });
+      if (companyAndType) return cleanText(companyAndType.split('·')[0]);
+
+      if (
+        lines.length <= 2 &&
+        !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(lines[0])
+      ) {
+        return lines[0];
+      }
+    }
+    return '';
+  })();
+
+  const company = cleanText(
+    (companyFromIntro || companyFromExperience || companyFromSemanticLink).split('·')[0],
+  );
   const contact = await extractContact();
 
   return {
