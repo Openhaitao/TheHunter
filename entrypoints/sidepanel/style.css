@@ -29,12 +29,15 @@ button {
   cursor: pointer;
 }
 
-button:focus-visible,
+button:focus-visible {
+  outline: 1px solid #85847e;
+  outline-offset: 2px;
+}
+
 input:focus-visible,
 textarea:focus-visible,
 select:focus-visible {
-  outline: 3px solid #2f6bff;
-  outline-offset: 2px;
+  outline: none;
 }
 
 ::selection {
