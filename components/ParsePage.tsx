@@ -440,12 +440,6 @@ export default function ParsePage({
           <Field label="姓名" value={draft.name} onChange={(value) => updateDraft('name', value)} />
           <Field label="职位" value={draft.title} onChange={(value) => updateDraft('title', value)} />
           <Field label="公司名称" value={draft.company} onChange={(value) => updateDraft('company', value)} />
-          <SelectField label="标签（必选）" value={draft.tag} onChange={(value) => updateDraft('tag', value)}>
-            <option value="">未选择</option>
-            <option value="Founder">Founder</option>
-            <option value="初创 Talent">初创 Talent</option>
-            <option value="大厂高 P">大厂高 P</option>
-          </SelectField>
           <Field
             label="LinkedIn 链接"
             value={draft.linkedinUrl}
@@ -482,6 +476,17 @@ export default function ParsePage({
 
           {manualOpen && (
             <div className="mt-4 space-y-3.5">
+              <SelectField
+                label="标签（必选）"
+                value={draft.tag}
+                onChange={(value) => updateDraft('tag', value)}
+              >
+                <option value="">未选择</option>
+                <option value="Founder">Founder</option>
+                <option value="初创 Talent">初创 Talent</option>
+                <option value="大厂高 P">大厂高 P</option>
+              </SelectField>
+
               <Field
                 label="联系方式"
                 value={draft.contact}
