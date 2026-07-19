@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  DEFAULT_FEISHU_FIELD_MAPPING,
+  FEISHU_FIELD_MAPPING_KEY,
   FEISHU_WEBHOOK_KEY,
   PROFILE_DRAFT_KEY,
   getLocalValue,
@@ -268,20 +270,30 @@ export default function ParsePage({
 
     setSubmitStatus('submitting');
     try {
+      const fieldMapping =
+        (await getLocalValue<Record<string, string>>(FEISHU_FIELD_MAPPING_KEY)) ??
+        DEFAULT_FEISHU_FIELD_MAPPING;
+      const internalValues: Record<string, string> = {
+        name: draft.name,
+        title: draft.title,
+        company: draft.company,
+        linkedinUrl: draft.linkedinUrl,
+        experience: draft.experience,
+        education: draft.education,
+        contact: draft.contact,
+        attention: draft.attention,
+        notes: draft.notes,
+      };
+      const requestBody = Object.fromEntries(
+        Object.entries(fieldMapping).map(([fieldName, internalName]) => [
+          fieldName,
+          internalValues[internalName] ?? '',
+        ]),
+      );
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          姓名: draft.name,
-          职位: draft.title,
-          公司名称: draft.company,
-          'linkedin 链接': draft.linkedinUrl,
-          个人经历: draft.experience,
-          教育背景: draft.education,
-          联系方式: draft.contact,
-          关注度: draft.attention,
-          备注: draft.notes,
-        }),
+        body: JSON.stringify(requestBody),
       });
 
       const responseText = await response.text();
