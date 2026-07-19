@@ -5,10 +5,12 @@ import {
   DEFAULT_AI_PROMPT,
   DEFAULT_FEISHU_FIELD_MAPPING,
   FEISHU_FIELD_MAPPING_KEY,
+  FEISHU_TARGET_KEY,
   FEISHU_WEBHOOK_KEY,
   getLocalValue,
   setLocalValue,
   type AiConfig,
+  type FeishuTarget,
   type PromptConfig,
 } from '../lib/config';
 
@@ -109,8 +111,29 @@ function normalizeHttpsUrl(value: string) {
   return url.toString().replace(/\/+$/, '');
 }
 
+function parseFeishuTargetUrl(value: string): FeishuTarget {
+  const url = new URL(value.trim());
+  if (url.protocol !== 'https:' || !/(?:feishu\.cn|larksuite\.com)$/.test(url.hostname)) {
+    throw new Error('Invalid Feishu URL');
+  }
+  const resourceMatch = url.pathname.match(/^\/(?:wiki|base)\/([^/]+)/);
+  const tableId = url.searchParams.get('table') ?? '';
+  const viewId = url.searchParams.get('view') ?? '';
+  if (!resourceMatch || !/^tbl[A-Za-z0-9]+$/.test(tableId)) {
+    throw new Error('Target table ID required');
+  }
+  if (viewId && !/^vew[A-Za-z0-9]+$/.test(viewId)) throw new Error('Invalid view ID');
+  return {
+    url: url.toString(),
+    resourceToken: resourceMatch[1],
+    tableId,
+    viewId,
+  };
+}
+
 export default function SettingsPage() {
   const [aiConfig, setAiConfig] = useState<AiConfig>(EMPTY_AI_CONFIG);
+  const [targetUrl, setTargetUrl] = useState('');
   const [webhookUrl, setWebhookUrl] = useState('');
   const [fieldMappingText, setFieldMappingText] = useState(
     JSON.stringify(DEFAULT_FEISHU_FIELD_MAPPING, null, 2),
@@ -128,11 +151,13 @@ export default function SettingsPage() {
     void Promise.all([
       getLocalValue<AiConfig>(AI_CONFIG_KEY),
       getLocalValue<string>(FEISHU_WEBHOOK_KEY),
+      getLocalValue<FeishuTarget>(FEISHU_TARGET_KEY),
       getLocalValue<Record<string, string>>(FEISHU_FIELD_MAPPING_KEY),
       getLocalValue<PromptConfig>(AI_PROMPT_KEY),
-    ]).then(([savedAiConfig, savedWebhook, savedMapping, savedPrompt]) => {
+    ]).then(([savedAiConfig, savedWebhook, savedTarget, savedMapping, savedPrompt]) => {
       if (savedAiConfig) setAiConfig({ ...EMPTY_AI_CONFIG, ...savedAiConfig });
       if (typeof savedWebhook === 'string') setWebhookUrl(savedWebhook);
+      if (savedTarget?.url) setTargetUrl(savedTarget.url);
       if (savedMapping) setFieldMappingText(JSON.stringify(savedMapping, null, 2));
       if (savedPrompt?.content) setPromptConfig(savedPrompt);
     });
@@ -195,6 +220,7 @@ export default function SettingsPage() {
     setWebhookSaveState('working');
     try {
       const normalizedUrl = normalizeHttpsUrl(webhookUrl);
+      const target = parseFeishuTargetUrl(targetUrl);
       const mapping = JSON.parse(fieldMappingText) as unknown;
       if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) {
         throw new Error('Invalid mapping');
@@ -203,6 +229,7 @@ export default function SettingsPage() {
         'name',
         'title',
         'company',
+        'tag',
         'linkedinUrl',
         'experience',
         'education',
@@ -210,19 +237,32 @@ export default function SettingsPage() {
         'attention',
         'notes',
       ]);
-      if (
-        !Object.entries(mapping).every(
-          ([fieldName, internalName]) =>
-            fieldName.trim() && typeof internalName === 'string' && allowedFields.has(internalName),
-        )
-      ) {
+      const normalizedMapping = Object.fromEntries(
+        Object.entries(mapping).map(([fieldName, template]) => [
+          fieldName,
+          typeof template === 'string' && allowedFields.has(template)
+            ? `{{${template}}}`
+            : template,
+        ]),
+      );
+      if (!Object.entries(normalizedMapping).every(([fieldName, template]) => {
+        if (!fieldName.trim() || typeof template !== 'string' || !template.trim()) return false;
+        return Array.from(template.matchAll(/{{\s*([A-Za-z][A-Za-z0-9]*)\s*}}/g)).every(
+          (match) => allowedFields.has(match[1]),
+        );
+      })) {
         throw new Error('Invalid mapping fields');
       }
       await requestOriginPermission(normalizedUrl);
       await setLocalValue(FEISHU_WEBHOOK_KEY, normalizedUrl);
-      await setLocalValue(FEISHU_FIELD_MAPPING_KEY, mapping as Record<string, string>);
+      await setLocalValue(FEISHU_TARGET_KEY, target);
+      await setLocalValue(
+        FEISHU_FIELD_MAPPING_KEY,
+        normalizedMapping as Record<string, string>,
+      );
       setWebhookUrl(normalizedUrl);
-      setFieldMappingText(JSON.stringify(mapping, null, 2));
+      setTargetUrl(target.url);
+      setFieldMappingText(JSON.stringify(normalizedMapping, null, 2));
       setWebhookSaveState('success');
     } catch {
       setWebhookSaveState('error');
@@ -245,18 +285,29 @@ export default function SettingsPage() {
   const mappingPreview = (() => {
     try {
       const mapping = JSON.parse(fieldMappingText) as Record<string, string>;
+      const target = parseFeishuTargetUrl(targetUrl);
       return JSON.stringify(
-        Object.fromEntries(
-          Object.entries(mapping).map(([fieldName, internalName]) => [
-            fieldName,
-            `{{${internalName}}}`,
-          ]),
-        ),
+        {
+          _thehunter: {
+            expected_table_id: target.tableId,
+            expected_view_id: target.viewId,
+          },
+          fields: mapping,
+        },
         null,
         2,
       );
     } catch {
       return '字段映射 JSON 无效';
+    }
+  })();
+
+  const targetSummary = (() => {
+    try {
+      const target = parseFeishuTargetUrl(targetUrl);
+      return `已锁定表 ${target.tableId}${target.viewId ? ` · 视图 ${target.viewId}` : ''}`;
+    } catch {
+      return '请填写包含 table 参数的飞书多维表格链接';
     }
   })();
 
@@ -333,8 +384,20 @@ export default function SettingsPage() {
 
         <SettingsSection
           title="飞书多维表格"
-          description="配置 Webhook，并将飞书字段名映射到插件内部字段。"
+          description="锁定唯一目标表，并配置 Webhook 与字段模板。"
         >
+          <SettingField
+            label="目标多维表格链接"
+            type="url"
+            value={targetUrl}
+            placeholder="https://...feishu.cn/wiki/...?table=tbl...&view=vew..."
+            onChange={(value) => {
+              setTargetUrl(value);
+              setWebhookSaveState('idle');
+            }}
+          />
+          <p className="mb-3.5 mt-1.5 text-[10px] leading-4 text-[#9a9993]">{targetSummary}</p>
+
           <SettingField
             label="飞书 Webhook"
             type="url"
@@ -372,7 +435,7 @@ export default function SettingsPage() {
             <button
               type="button"
               onClick={() => void saveWebhook()}
-              disabled={!webhookUrl.trim() || webhookSaveState === 'working'}
+              disabled={!targetUrl.trim() || !webhookUrl.trim() || webhookSaveState === 'working'}
               className="shrink-0 text-[11px] text-[#65645f] underline decoration-[#c7c6c0] underline-offset-4 hover:text-[#242421] disabled:cursor-default disabled:opacity-40"
             >
               {webhookSaveState === 'working'

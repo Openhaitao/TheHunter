@@ -5,12 +5,14 @@ import {
   DEFAULT_AI_PROMPT,
   DEFAULT_FEISHU_FIELD_MAPPING,
   FEISHU_FIELD_MAPPING_KEY,
+  FEISHU_TARGET_KEY,
   FEISHU_WEBHOOK_KEY,
   PROFILE_DRAFT_KEY,
   getLocalValue,
   removeLocalValue,
   setLocalValue,
   type AiConfig,
+  type FeishuTarget,
   type PromptConfig,
 } from '../lib/config';
 import { mapSnapshotWithAi } from '../lib/ai';
@@ -24,12 +26,13 @@ type PageStatus =
   | 'extractError'
   | 'unsupported'
   | 'error';
-type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
+type SubmitStatus = 'idle' | 'submitting' | 'success' | 'targetError' | 'error';
 
 type ProfileDraft = {
   name: string;
   title: string;
   company: string;
+  tag: string;
   linkedinUrl: string;
   experience: string;
   education: string;
@@ -42,6 +45,7 @@ const EMPTY_DRAFT: ProfileDraft = {
   name: '',
   title: '',
   company: '',
+  tag: '',
   linkedinUrl: '',
   experience: '',
   education: '',
@@ -311,8 +315,11 @@ export default function ParsePage({
   useEffect(() => () => window.clearTimeout(successTimer.current), []);
 
   const submitToFeishu = async () => {
-    const webhookUrl = await getLocalValue<string>(FEISHU_WEBHOOK_KEY);
-    if (typeof webhookUrl !== 'string' || !webhookUrl) {
+    const [webhookUrl, target] = await Promise.all([
+      getLocalValue<string>(FEISHU_WEBHOOK_KEY),
+      getLocalValue<FeishuTarget>(FEISHU_TARGET_KEY),
+    ]);
+    if (typeof webhookUrl !== 'string' || !webhookUrl || !target?.tableId) {
       onOpenSettings();
       return;
     }
@@ -326,6 +333,7 @@ export default function ParsePage({
         name: draft.name,
         title: draft.title,
         company: draft.company,
+        tag: draft.tag,
         linkedinUrl: draft.linkedinUrl,
         experience: draft.experience,
         education: draft.education,
@@ -333,12 +341,24 @@ export default function ParsePage({
         attention: draft.attention,
         notes: draft.notes,
       };
-      const requestBody = Object.fromEntries(
-        Object.entries(fieldMapping).map(([fieldName, internalName]) => [
+      const renderTemplate = (template: string) =>
+        internalValues[template] ?? template.replace(/{{\s*([A-Za-z][A-Za-z0-9]*)\s*}}/g, (_, key: string) =>
+          internalValues[key] ?? '',
+        );
+      const fields = Object.fromEntries(
+        Object.entries(fieldMapping).map(([fieldName, template]) => [
           fieldName,
-          internalValues[internalName] ?? '',
+          renderTemplate(template),
         ]),
       );
+      const requestBody = {
+        _thehunter: {
+          expected_table_id: target.tableId,
+          expected_view_id: target.viewId,
+          source_profile_url: draft.linkedinUrl,
+        },
+        fields,
+      };
       const response = await fetch(webhookUrl, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -346,23 +366,29 @@ export default function ParsePage({
       });
 
       const responseText = await response.text();
-      let responseCode: number | undefined;
+      let responseJson: Record<string, any> = {};
       try {
-        const responseJson = JSON.parse(responseText) as { code?: number };
-        responseCode = responseJson.code;
+        responseJson = JSON.parse(responseText) as Record<string, any>;
       } catch {
-        responseCode = undefined;
+        responseJson = {};
       }
 
-      if (!response.ok || (typeof responseCode === 'number' && responseCode !== 0)) {
+      if (!response.ok || (typeof responseJson.code === 'number' && responseJson.code !== 0)) {
         throw new Error('Webhook request failed');
+      }
+      const actualTableId =
+        responseJson.table_id ?? responseJson.data?.table_id ?? responseJson.data?.record?.table_id;
+      const recordId =
+        responseJson.record_id ?? responseJson.data?.record_id ?? responseJson.data?.record?.record_id;
+      if (actualTableId !== target.tableId || typeof recordId !== 'string' || !recordId) {
+        throw new Error('TARGET_MISMATCH');
       }
 
       setSubmitStatus('success');
       window.clearTimeout(successTimer.current);
       successTimer.current = window.setTimeout(() => setSubmitStatus('idle'), 2600);
-    } catch {
-      setSubmitStatus('error');
+    } catch (error) {
+      setSubmitStatus(error instanceof Error && error.message === 'TARGET_MISMATCH' ? 'targetError' : 'error');
     }
   };
 
@@ -381,7 +407,7 @@ export default function ParsePage({
               ? 'AI 解析失败，请检查设置'
               : 'AI 解析完成，请确认';
 
-  const canSubmit = Boolean(draft.name.trim() && draft.linkedinUrl.trim());
+  const canSubmit = Boolean(draft.name.trim() && draft.linkedinUrl.trim() && draft.tag);
 
   return (
     <div className="flex h-full flex-col">
@@ -414,6 +440,12 @@ export default function ParsePage({
           <Field label="姓名" value={draft.name} onChange={(value) => updateDraft('name', value)} />
           <Field label="职位" value={draft.title} onChange={(value) => updateDraft('title', value)} />
           <Field label="公司名称" value={draft.company} onChange={(value) => updateDraft('company', value)} />
+          <SelectField label="标签（必选）" value={draft.tag} onChange={(value) => updateDraft('tag', value)}>
+            <option value="">未选择</option>
+            <option value="Founder">Founder</option>
+            <option value="初创 Talent">初创 Talent</option>
+            <option value="大厂高 P">大厂高 P</option>
+          </SelectField>
           <Field
             label="LinkedIn 链接"
             value={draft.linkedinUrl}
@@ -490,6 +522,8 @@ export default function ParsePage({
         className={`h-11 w-full shrink-0 border-t border-[#cfcec8] text-[12px] font-medium transition-colors disabled:cursor-default ${
           submitStatus === 'success'
             ? 'bg-[#dce5da] text-[#365039]'
+            : submitStatus === 'targetError'
+              ? 'bg-[#eaded8] text-[#70483e]'
             : submitStatus === 'error'
               ? 'bg-[#eaded8] text-[#70483e]'
               : 'bg-[#deddd8] text-[#292925] hover:bg-[#d4d3cd] disabled:bg-[#e9e8e3] disabled:text-[#aaa9a3]'
@@ -499,6 +533,8 @@ export default function ParsePage({
           ? '正在提交…'
           : submitStatus === 'success'
             ? '提交成功'
+            : submitStatus === 'targetError'
+              ? '目标表未验证，检查设置'
             : submitStatus === 'error'
               ? '提交失败，点击重试'
               : '提交到飞书多维表格'}

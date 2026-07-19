@@ -1,5 +1,6 @@
 export const PROFILE_DRAFT_KEY = 'thehunter.profileDraft.v1';
 export const FEISHU_WEBHOOK_KEY = 'thehunter.feishuWebhookUrl.v1';
+export const FEISHU_TARGET_KEY = 'thehunter.feishuTarget.v1';
 export const AI_CONFIG_KEY = 'thehunter.aiConfig.v1';
 export const AI_PROMPT_KEY = 'thehunter.aiPrompt.v1';
 export const FEISHU_FIELD_MAPPING_KEY = 'thehunter.feishuFieldMapping.v1';
@@ -15,10 +16,18 @@ export type PromptConfig = {
   updatedAt: string;
 };
 
+export type FeishuTarget = {
+  url: string;
+  resourceToken: string;
+  tableId: string;
+  viewId: string;
+};
+
 export const DEFAULT_FEISHU_FIELD_MAPPING: Record<string, string> = {
   姓名: 'name',
   职位: 'title',
   公司名称: 'company',
+  标签: 'tag',
   'linkedin 链接': 'linkedinUrl',
   个人经历: 'experience',
   教育背景: 'education',
