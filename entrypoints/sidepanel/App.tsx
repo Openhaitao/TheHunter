@@ -76,7 +76,7 @@ export default function App() {
 
       <nav
         aria-label="工具"
-        className="flex w-[52px] shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2.5"
+        className="flex w-12 shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2"
       >
         <ToolButton
           active={tool === 'parse'}
