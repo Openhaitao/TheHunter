@@ -6,10 +6,11 @@ import {
   removeLocalValue,
   setLocalValue,
 } from '../lib/config';
-import { extractLinkedInProfileFromPage } from '../lib/linkedin';
+import { collectLinkedInDebugSnapshot, extractLinkedInProfileFromPage } from '../lib/linkedin';
 
 type PageStatus = 'checking' | 'extracting' | 'detected' | 'extractError' | 'unsupported' | 'error';
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
+type DebugStatus = 'idle' | 'copying' | 'copied' | 'error';
 
 type ProfileDraft = {
   name: string;
@@ -124,6 +125,7 @@ export default function ParsePage({
   const [manualOpen, setManualOpen] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
+  const [debugStatus, setDebugStatus] = useState<DebugStatus>('idle');
   const extractionRequest = useRef(0);
   const previousResetToken = useRef(0);
   const successTimer = useRef<number>();
@@ -300,6 +302,24 @@ export default function ParsePage({
     }
   };
 
+  const copyDebugSnapshot = async () => {
+    setDebugStatus('copying');
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No active tab');
+      const [execution] = await browser.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: collectLinkedInDebugSnapshot,
+      });
+      if (typeof execution?.result !== 'string') throw new Error('No snapshot');
+      await navigator.clipboard.writeText(execution.result);
+      setDebugStatus('copied');
+      window.setTimeout(() => setDebugStatus('idle'), 2600);
+    } catch {
+      setDebugStatus('error');
+    }
+  };
+
   const statusLabel =
     status === 'checking'
       ? '正在检测当前页面…'
@@ -319,7 +339,7 @@ export default function ParsePage({
     <div className="flex h-full flex-col">
       <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[460px] px-4 pb-8 pt-3.5">
-        <div className="mb-5 flex items-center justify-between text-[11px]">
+        <div className="mb-5 flex items-center justify-between gap-3 text-[11px]">
           <span className="flex items-center gap-2 text-[#777670]">
             <span
               className={`h-1.5 w-1.5 rounded-full ${
@@ -332,6 +352,19 @@ export default function ParsePage({
             />
             {statusLabel}
           </span>
+          <button
+            type="button"
+            onClick={() => void copyDebugSnapshot()}
+            className="shrink-0 text-[#777670] hover:text-[#242421]"
+          >
+            {debugStatus === 'copying'
+              ? '复制中…'
+              : debugStatus === 'copied'
+                ? '已复制'
+                : debugStatus === 'error'
+                  ? '复制失败'
+                  : '复制调试信息'}
+          </button>
         </div>
 
         <div className="space-y-3.5">

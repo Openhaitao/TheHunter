@@ -7,6 +7,48 @@ export type LinkedInProfileData = {
   contact: string;
 };
 
+export function collectLinkedInDebugSnapshot() {
+  const clean = (value: string | null | undefined) =>
+    (value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
+  const describe = (selector: string, root: ParentNode = document) =>
+    Array.from(root.querySelectorAll(selector)).slice(0, 6).map((element) => ({
+      tag: element.tagName.toLowerCase(),
+      class: clean(element.getAttribute('class')).slice(0, 300),
+      href: element instanceof HTMLAnchorElement ? element.href : '',
+      text: clean((element as HTMLElement).innerText || element.textContent).slice(0, 600),
+    }));
+
+  const nameElement = document.querySelector(
+    'h1.text-heading-xlarge, h1[data-anonymize="person-name"], .pv-text-details__left-panel h1, h1.top-card-layout__title, h1.break-words, main h1',
+  );
+  const intro =
+    nameElement?.closest('section') ??
+    nameElement?.closest('.artdeco-card') ??
+    nameElement?.parentElement?.parentElement ??
+    null;
+  const experience = document.getElementById('experience')?.closest('section') ?? null;
+
+  return JSON.stringify({
+    capturedAt: new Date().toISOString(),
+    url: location.href,
+    title: document.title,
+    nameCandidates: describe('h1'),
+    headlineCandidates: describe(
+      '.text-body-medium.break-words, .pv-text-details__left-panel .text-body-medium, .top-card-layout__headline, [data-generated-suggestion-target]',
+      intro ?? document,
+    ),
+    companyCandidates: describe(
+      'a[href*="/company/"], .pv-text-details__right-panel-item-text, .pv-text-details__right-panel-item',
+      intro ?? document,
+    ),
+    introText: clean((intro as HTMLElement | null)?.innerText).slice(0, 3000),
+    experienceText: clean((experience as HTMLElement | null)?.innerText).slice(0, 3000),
+    experienceLinks: describe('a', experience ?? document).filter((item) => item.href),
+    contactLinks: describe('a[href*="/overlay/contact-info/"]'),
+    dialogs: describe('[role="dialog"]'),
+  }, null, 2);
+}
+
 export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileData> {
   const waitForElement = (selector: string, timeoutMs = 5000) =>
     new Promise<Element | null>((resolve) => {
@@ -129,8 +171,26 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
       if (contactLink) {
         contactLink.click();
         openedByExtractor = true;
-        await waitForElement('[role="dialog"]', 3500);
-        dialog = findContactDialog();
+        dialog = await new Promise<Element | null>((resolve) => {
+          const existing = findContactDialog();
+          if (existing) {
+            resolve(existing);
+            return;
+          }
+
+          const observer = new MutationObserver(() => {
+            const contactDialog = findContactDialog();
+            if (!contactDialog) return;
+            observer.disconnect();
+            window.clearTimeout(timeout);
+            resolve(contactDialog);
+          });
+          const timeout = window.setTimeout(() => {
+            observer.disconnect();
+            resolve(findContactDialog());
+          }, 3500);
+          observer.observe(document.documentElement, { childList: true, subtree: true });
+        });
       }
     }
 
@@ -202,6 +262,8 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
       return (
         line.length > 2 &&
         line.length < 220 &&
+        !/^[·•]?\s*[123]\s*度$/.test(line) &&
+        !/^(?:1st|2nd|3rd)(?:\s+degree)?$/i.test(line) &&
         !lower.includes('位好友') &&
         !lower.includes('connections') &&
         !lower.includes('followers') &&
@@ -220,13 +282,14 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
   const companyFromIntro = firstText(intro, [
     'a[href*="/company/"] span[aria-hidden="true"]',
     'a[href*="/company/"]',
+    '.pv-text-details__right-panel-item-text',
+    '.pv-text-details__right-panel-item',
   ]);
   const firstExperienceItem = experienceSection?.querySelector('li') ?? null;
   const companyFromExperience = firstExperienceItem
     ? firstText(firstExperienceItem, [
         'a[href*="/company/"] span[aria-hidden="true"]',
         'a[href*="/company/"]',
-        '.t-14.t-normal:not(.t-black--light) span[aria-hidden="true"]',
       ])
     : '';
 
