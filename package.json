@@ -1,6 +1,6 @@
 {
   "name": "thehunter",
-  "description": "AI 网页信息猎手：把任何网页按你的模板结构化，发送到你的表格",
+  "description": "LinkedIn 人才信息采集工具",
   "private": true,
   "version": "2.0.0",
   "type": "module",
