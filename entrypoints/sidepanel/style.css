@@ -18,6 +18,14 @@ body {
   background: #f6f5f1;
 }
 
+.scrollbar-hidden {
+  scrollbar-width: none;
+}
+
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none;
+}
+
 button,
 input,
 textarea,

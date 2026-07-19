@@ -4,6 +4,7 @@ export type LinkedInProfileData = {
   company: string;
   experience: string;
   education: string;
+  contact: string;
 };
 
 export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileData> {
@@ -105,27 +106,111 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     };
   };
 
-  await waitForElement('main h1');
+  const titleName = cleanText(document.title)
+    .replace(/^\(\d+\)\s*/, '')
+    .replace(/\s*[|｜]\s*LinkedIn.*$/i, '')
+    .split(/\s+[–—-]\s+/)[0]
+    .trim();
 
-  const main = document.querySelector('main') ?? document;
-  const nameElement = main.querySelector('h1');
-  const intro = nameElement?.closest('section') ?? nameElement?.parentElement?.parentElement ?? main;
+  const extractContact = async () => {
+    const findContactDialog = () =>
+      Array.from(document.querySelectorAll('[role="dialog"]')).find((dialog) => {
+        const text = cleanText(dialog.querySelector('h2')?.textContent ?? dialog.textContent).toLowerCase();
+        return text.includes('联系方式') || text.includes('contact info');
+      }) ?? null;
 
-  const name = firstText(main, [
+    let dialog = findContactDialog();
+    let openedByExtractor = false;
+
+    if (!dialog) {
+      const contactLink = document.querySelector<HTMLAnchorElement>(
+        'a[href*="/overlay/contact-info/"]',
+      );
+      if (contactLink) {
+        contactLink.click();
+        openedByExtractor = true;
+        await waitForElement('[role="dialog"]', 3500);
+        dialog = findContactDialog();
+      }
+    }
+
+    if (!dialog) return '';
+
+    const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
+    const emails = unique(
+      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="mailto:"]')).map((link) =>
+        cleanText(decodeURIComponent(link.href.replace(/^mailto:/i, '').split('?')[0])),
+      ),
+    );
+    const phones = unique(
+      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="tel:"]')).map((link) =>
+        cleanText(decodeURIComponent(link.href.replace(/^tel:/i, ''))),
+      ),
+    );
+    const websites = unique(
+      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="http"]'))
+        .map((link) => link.href)
+        .filter((href) => !href.includes('linkedin.com/in/')),
+    );
+
+    if (openedByExtractor) {
+      const dismiss = dialog.querySelector<HTMLElement>(
+        'button[aria-label*="关闭"], button[aria-label*="Dismiss"], .artdeco-modal__dismiss',
+      );
+      dismiss?.click();
+    }
+
+    return [
+      ...emails.map((value) => `邮箱: ${value}`),
+      ...phones.map((value) => `电话: ${value}`),
+      ...websites.map((value) => `网站: ${value}`),
+    ].join('\n');
+  };
+
+  await waitForElement('main');
+
+  const main = document.querySelector('main') ?? document.documentElement;
+  const nameElement = document.querySelector('h1.text-heading-xlarge, h1[data-anonymize="person-name"], main h1');
+  const intro =
+    nameElement?.closest('section') ??
+    document.querySelector('a[href*="/overlay/contact-info/"]')?.closest('section') ??
+    main.querySelector('section') ??
+    main;
+
+  const name = firstText(document, [
     'h1.text-heading-xlarge',
     'h1[data-anonymize="person-name"]',
     '.pv-text-details__left-panel h1',
     'h1.top-card-layout__title',
     'h1.break-words',
-    'h1',
-  ]);
+    'main h1',
+  ]) || titleName;
 
-  const headline = firstText(intro, [
+  let headline = firstText(intro, [
     '.text-body-medium.break-words',
     '.pv-text-details__left-panel .text-body-medium',
     '.top-card-layout__headline',
     '[data-generated-suggestion-target]',
   ]);
+
+  if (!headline) {
+    const introLines = cleanLines(intro, [name, '联系方式', 'Contact info']);
+    const nameIndex = introLines.findIndex((line) => line === name);
+    const candidates = nameIndex >= 0 ? introLines.slice(nameIndex + 1) : introLines;
+    headline = candidates.find((line) => {
+      const lower = line.toLowerCase();
+      return (
+        line.length > 2 &&
+        line.length < 220 &&
+        !lower.includes('位好友') &&
+        !lower.includes('connections') &&
+        !lower.includes('followers') &&
+        !lower.includes('共同好友') &&
+        !lower.includes('contact info') &&
+        line !== '联系方式'
+      );
+    }) ?? '';
+  }
 
   const experienceSection = findSection('experience', ['工作经历', 'Experience']);
   const educationSection = findSection('education', ['教育经历', '教育背景', 'Education']);
@@ -136,28 +221,24 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     'a[href*="/company/"] span[aria-hidden="true"]',
     'a[href*="/company/"]',
   ]);
+  const firstExperienceItem = experienceSection?.querySelector('li') ?? null;
+  const companyFromExperience = firstExperienceItem
+    ? firstText(firstExperienceItem, [
+        'a[href*="/company/"] span[aria-hidden="true"]',
+        'a[href*="/company/"]',
+        '.t-14.t-normal:not(.t-black--light) span[aria-hidden="true"]',
+      ])
+    : '';
 
-  const companyFallback = experienceData.firstItemLines.find((line, index) => {
-    if (index === 0) return false;
-    const lower = line.toLowerCase();
-    return (
-      !/\b(?:19|20)\d{2}\b/.test(line) &&
-      !lower.includes('个月') &&
-      !lower.includes('年') &&
-      !lower.includes('month') &&
-      !lower.includes('year') &&
-      !lower.includes('·')
-    );
-  }) ?? experienceData.firstItemLines[1] ?? '';
-
-  const company = cleanText((companyFromIntro || companyFallback).split('·')[0]);
-  const fallbackHeadline = experienceData.firstItemLines[0] ?? '';
+  const company = cleanText((companyFromIntro || companyFromExperience).split('·')[0]);
+  const contact = await extractContact();
 
   return {
     name,
-    headline: headline || fallbackHeadline,
+    headline,
     company,
     experience: experienceData.text,
     education: educationData.text,
+    contact,
   };
 }

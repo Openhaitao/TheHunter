@@ -20,7 +20,6 @@ type ProfileDraft = {
   education: string;
   contact: string;
   attention: string;
-  outreach: string;
   notes: string;
 };
 
@@ -33,7 +32,6 @@ const EMPTY_DRAFT: ProfileDraft = {
   education: '',
   contact: '',
   attention: '',
-  outreach: '',
   notes: '',
 };
 
@@ -41,8 +39,8 @@ function normalizeLinkedInProfileUrl(rawUrl: string) {
   try {
     const url = new URL(rawUrl);
     const isLinkedIn = url.hostname === 'linkedin.com' || url.hostname.endsWith('.linkedin.com');
-    const isProfile = /^\/in\/[^/]+\/?$/.test(url.pathname);
-    return isLinkedIn && isProfile ? `${url.origin}${url.pathname}` : null;
+    const profileMatch = url.pathname.match(/^\/in\/([^/]+)(?:\/overlay\/contact-info)?\/?$/);
+    return isLinkedIn && profileMatch ? `${url.origin}/in/${profileMatch[1]}/` : null;
   } catch {
     return null;
   }
@@ -75,7 +73,7 @@ function Field({
           value={value}
           placeholder={placeholder}
           onChange={(event) => onChange(event.target.value)}
-          className={`${fieldClass} resize-y py-2.5 leading-5`}
+          className={`${fieldClass} scrollbar-hidden resize-y py-2.5 leading-5`}
         />
       ) : (
         <input
@@ -123,7 +121,7 @@ export default function ParsePage({
 }) {
   const [status, setStatus] = useState<PageStatus>('checking');
   const [draft, setDraft] = useState<ProfileDraft>(EMPTY_DRAFT);
-  const [manualOpen, setManualOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const extractionRequest = useRef(0);
@@ -177,6 +175,7 @@ export default function ParsePage({
           linkedinUrl: profileUrl,
           experience: profile.experience,
           education: profile.education,
+          contact: profile.contact || (sameProfile ? current.contact : ''),
         };
       });
       setStatus('detected');
@@ -245,7 +244,7 @@ export default function ParsePage({
       extractionRequest.current += 1;
       setHydrated(false);
       setSubmitStatus('idle');
-      setManualOpen(false);
+      setManualOpen(true);
       setDraft(EMPTY_DRAFT);
       await removeLocalValue(PROFILE_DRAFT_KEY);
       await inspectActiveTab(true);
@@ -276,7 +275,6 @@ export default function ParsePage({
           教育背景: draft.education,
           联系方式: draft.contact,
           关注度: draft.attention,
-          是否建联: draft.outreach,
           备注: draft.notes,
         }),
       });
@@ -319,7 +317,7 @@ export default function ParsePage({
 
   return (
     <div className="flex h-full flex-col">
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="scrollbar-hidden min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[460px] px-4 pb-8 pt-3.5">
         <div className="mb-5 flex items-center justify-between text-[11px]">
           <span className="flex items-center gap-2 text-[#777670]">
@@ -361,6 +359,14 @@ export default function ParsePage({
             rows={3}
             placeholder="解析后自动填入教育经历"
           />
+          <Field
+            label="联系方式"
+            value={draft.contact}
+            onChange={(value) => updateDraft('contact', value)}
+            multiline
+            rows={3}
+            placeholder="解析后自动填入邮箱、电话或网站"
+          />
         </div>
 
         <div className="mt-6 border-t border-[#dfded8] pt-4">
@@ -376,36 +382,16 @@ export default function ParsePage({
 
           {manualOpen && (
             <div className="mt-4 space-y-3.5">
-              <Field
-                label="联系方式"
-                value={draft.contact}
-                onChange={(value) => updateDraft('contact', value)}
-              />
-
-              <div className="grid grid-cols-2 gap-3">
-                <SelectField
-                  label="关注度"
-                  value={draft.attention}
-                  onChange={(value) => updateDraft('attention', value)}
-                >
-                  <option value="">未选择</option>
-                  <option value="P0">P0</option>
-                  <option value="P1">P1</option>
-                  <option value="P2">P2</option>
-                </SelectField>
-
-                <SelectField
-                  label="是否建联"
-                  value={draft.outreach}
-                  onChange={(value) => updateDraft('outreach', value)}
-                >
-                  <option value="">未选择</option>
-                  <option value="加上微信">加上微信</option>
-                  <option value="已发 LinkedIn 私信">已发 LinkedIn 私信</option>
-                  <option value="已发邮件">已发邮件</option>
-                  <option value="已发 Twitter 私信">已发 Twitter 私信</option>
-                </SelectField>
-              </div>
+              <SelectField
+                label="关注度"
+                value={draft.attention}
+                onChange={(value) => updateDraft('attention', value)}
+              >
+                <option value="">未选择</option>
+                <option value="P0">P0</option>
+                <option value="P1">P1</option>
+                <option value="P2">P2</option>
+              </SelectField>
 
               <Field
                 label="备注"
