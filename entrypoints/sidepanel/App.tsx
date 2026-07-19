@@ -56,7 +56,7 @@ function ToolButton({
       aria-pressed={active}
       title={label}
       onClick={onClick}
-      className={`flex h-9 w-9 items-center justify-center transition-colors ${
+      className={`flex h-8 w-8 items-center justify-center transition-colors ${
         active
           ? 'text-[#242421]'
           : 'text-[#aaa9a3] hover:text-[#5f5e59]'
@@ -76,7 +76,7 @@ export default function App() {
 
       <nav
         aria-label="工具"
-        className="flex w-12 shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2"
+        className="flex w-11 shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2"
       >
         <ToolButton
           active={tool === 'parse'}
