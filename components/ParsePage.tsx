@@ -179,7 +179,11 @@ export default function ParsePage({
           education: profile.education,
         };
       });
-      setStatus('detected');
+      setStatus(
+        profile.name && profile.headline && profile.company && profile.experience
+          ? 'detected'
+          : 'extractError',
+      );
     } catch {
       if (requestId === extractionRequest.current) setStatus('extractError');
     }

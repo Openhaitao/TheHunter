@@ -9,8 +9,8 @@ export type LinkedInProfileData = {
 export function collectLinkedInDebugSnapshot() {
   const clean = (value: string | null | undefined) =>
     (value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
-  const describe = (selector: string, root: ParentNode = document) =>
-    Array.from(root.querySelectorAll(selector)).slice(0, 6).map((element) => ({
+  const describe = (selector: string, root: ParentNode = document, limit = 6) =>
+    Array.from(root.querySelectorAll(selector)).slice(0, limit).map((element) => ({
       tag: element.tagName.toLowerCase(),
       class: clean(element.getAttribute('class')).slice(0, 300),
       href: element instanceof HTMLAnchorElement ? element.href : '',
@@ -26,6 +26,30 @@ export function collectLinkedInDebugSnapshot() {
     nameElement?.parentElement?.parentElement ??
     null;
   const experience = document.getElementById('experience')?.closest('section') ?? null;
+  const semanticMarkers = (labels: string[], detailsPath: string) => {
+    const seeds = [
+      ...Array.from(document.querySelectorAll<HTMLElement>(`a[href*="${detailsPath}"]`)),
+      ...Array.from(document.querySelectorAll<HTMLElement>('main *')).filter((element) => {
+        if (element.children.length > 0) return false;
+        const text = clean(element.innerText || element.textContent).toLowerCase();
+        return labels.some((label) => text === label.toLowerCase());
+      }),
+    ].slice(0, 4);
+
+    return seeds.map((seed) => {
+      const ancestry = [];
+      let node: HTMLElement | null = seed;
+      for (let depth = 0; node && depth < 8; depth += 1, node = node.parentElement) {
+        ancestry.push({
+          tag: node.tagName.toLowerCase(),
+          class: clean(node.className).slice(0, 220),
+          href: node instanceof HTMLAnchorElement ? node.href : '',
+          text: clean(node.innerText || node.textContent).slice(0, 1800),
+        });
+      }
+      return ancestry;
+    });
+  };
 
   return JSON.stringify({
     capturedAt: new Date().toISOString(),
@@ -39,10 +63,16 @@ export function collectLinkedInDebugSnapshot() {
     companyCandidates: describe(
       'a[href*="/company/"], .pv-text-details__right-panel-item-text, .pv-text-details__right-panel-item',
       intro ?? document,
+      24,
     ),
     introText: clean((intro as HTMLElement | null)?.innerText).slice(0, 3000),
     experienceText: clean((experience as HTMLElement | null)?.innerText).slice(0, 3000),
     experienceLinks: describe('a', experience ?? document).filter((item) => item.href),
+    experienceStructure: semanticMarkers(['工作经历', 'Experience'], '/details/experience/'),
+    educationStructure: semanticMarkers(
+      ['教育经历', '教育背景', 'Education'],
+      '/details/education/',
+    ),
     contactLinks: [
       ...describe('a[href*="/overlay/contact-info/"]'),
       ...describe('button, [role="button"], a').filter((item) =>
@@ -161,7 +191,6 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
   await waitForElement('main');
 
   const main = document.querySelector('main') ?? document.documentElement;
-  const nameElement = document.querySelector('h1.text-heading-xlarge, h1[data-anonymize="person-name"], main h1');
   const profilePath = location.pathname.replace(/\/overlay\/contact-info\/?$/, '/');
   const identityAnchor = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href]')).find(
     (anchor) => {
@@ -176,42 +205,97 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     },
   );
   const identityLines = cleanLines(identityAnchor ?? null);
-  const semanticExperienceItems: string[][] = [];
-  const seenExperienceItems = new Set<string>();
-  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]')) {
-    const lines = cleanLines(link);
-    if (lines.length < 2) continue;
-    if (!lines.some((line) => /(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line))) {
-      continue;
-    }
+  const isDateLine = (line: string) => /(?:19|20)\d{2}|\bpresent\b|至今/i.test(line);
+  const hasDateOrDuration = (line: string) =>
+    isDateLine(line) || /个月|\bmonths?\b|\byears?\b/i.test(line);
+  const findSemanticContainer = (labels: string[], detailsPath: string) => {
+    const detailsLink = document.querySelector<HTMLElement>(`a[href*="${detailsPath}"]`);
+    const labelElement = Array.from(document.querySelectorAll<HTMLElement>('main *')).find(
+      (element) => {
+        if (element.children.length > 0) return false;
+        const text = cleanText(element.innerText || element.textContent).toLowerCase();
+        return labels.some((label) => text === label.toLowerCase());
+      },
+    );
 
-    const key = lines.join('\n');
-    if (seenExperienceItems.has(key)) continue;
-    seenExperienceItems.add(key);
-    semanticExperienceItems.push(lines);
-  }
-
-  const latestJob = (() => {
-    for (const lines of semanticExperienceItems) {
-      const companyAndType = lines.find((line, index) => {
-        if (index === 0 || !line.includes('·')) return false;
-        return !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line);
-      });
-      if (companyAndType) {
-        return {
-          title: lines[0],
-          company: cleanText(companyAndType.split('·')[0]),
-        };
+    for (const seed of [detailsLink, labelElement]) {
+      let node = seed;
+      while (node && node !== main) {
+        const lines = cleanLines(node, labels);
+        if (lines.length >= 3 && lines.some(hasDateOrDuration)) return node;
+        node = node.parentElement;
       }
     }
     return null;
-  })();
-  const intro =
-    nameElement?.closest('section') ??
-    document.querySelector('a[href*="/overlay/contact-info/"]')?.closest('section') ??
-    main.querySelector('section') ??
-    main;
+  };
 
+  let semanticExperienceContainer = findSemanticContainer(
+    ['工作经历', 'Experience'],
+    '/details/experience/',
+  );
+  let semanticEducationContainer = findSemanticContainer(
+    ['教育经历', '教育背景', 'Education'],
+    '/details/education/',
+  );
+
+  if (!semanticExperienceContainer || !semanticEducationContainer) {
+    const originalScrollY = window.scrollY;
+    const scrollHeight = document.documentElement.scrollHeight;
+    for (const ratio of [0.35, 0.65, 1]) {
+      window.scrollTo({ top: scrollHeight * ratio, behavior: 'auto' });
+      await new Promise((resolve) => window.setTimeout(resolve, 180));
+      semanticExperienceContainer ??= findSemanticContainer(
+        ['工作经历', 'Experience'],
+        '/details/experience/',
+      );
+      semanticEducationContainer ??= findSemanticContainer(
+        ['教育经历', '教育背景', 'Education'],
+        '/details/education/',
+      );
+      if (semanticExperienceContainer && semanticEducationContainer) break;
+    }
+    window.scrollTo({ top: originalScrollY, behavior: 'auto' });
+  }
+
+  const semanticExperienceLines = cleanLines(semanticExperienceContainer, [
+    '工作经历',
+    'Experience',
+  ]);
+  const latestJob = (() => {
+    if (!semanticExperienceContainer) return null;
+
+    for (const companyLink of semanticExperienceContainer.querySelectorAll<HTMLAnchorElement>(
+      'a[href*="/company/"]',
+    )) {
+      const linkLines = cleanLines(companyLink);
+      if (linkLines.length === 0) continue;
+
+      let jobBlock: Element | null = companyLink;
+      while (jobBlock && jobBlock !== semanticExperienceContainer) {
+        const blockLines = cleanLines(jobBlock);
+        if (blockLines.length >= 3 && blockLines.some(hasDateOrDuration)) break;
+        jobBlock = jobBlock.parentElement;
+      }
+
+      const lines = cleanLines(jobBlock ?? companyLink);
+      const companyAndType = lines.find((line, index) => {
+        if (index === 0 || !line.includes('·')) return false;
+        return !hasDateOrDuration(line);
+      });
+      const company = companyAndType
+        ? cleanText(companyAndType.split('·')[0])
+        : linkLines.find((line) => !hasDateOrDuration(line) && !line.includes('·')) ?? '';
+      const firstDateIndex = lines.findIndex(isDateLine);
+      const beforeDate = firstDateIndex > 0 ? lines.slice(0, firstDateIndex) : lines;
+      const title = [...beforeDate].reverse().find((line) => {
+        if (line === company || line === companyAndType || hasDateOrDuration(line)) return false;
+        return !/^(全职|兼职|实习|合同|自雇|full[- ]time|part[- ]time|internship|contract)$/i.test(line);
+      }) ?? '';
+
+      if (title && company && lines.some(hasDateOrDuration)) return { title, company };
+    }
+    return null;
+  })();
   const name = firstText(document, [
     'h1.text-heading-xlarge',
     'h1[data-anonymize="person-name"]',
@@ -220,69 +304,26 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     'h1.break-words',
     'main h1',
   ]) || identityLines[0] || titleName;
-
-  let headline = latestJob?.title || firstText(intro, [
-    '.text-body-medium.break-words',
-    '.pv-text-details__left-panel .text-body-medium',
-    '.top-card-layout__headline',
-    '[data-generated-suggestion-target]',
-  ]);
-
-  if (!headline && identityLines[1]) headline = identityLines[1];
-
-  if (!headline) {
-    const introLines = cleanLines(intro, [name, '联系方式', 'Contact info']);
-    const nameIndex = introLines.findIndex((line) => line === name);
-    const candidates = nameIndex >= 0 ? introLines.slice(nameIndex + 1) : introLines;
-    headline = candidates.find((line) => {
-      const lower = line.toLowerCase();
-      return (
-        line.length > 2 &&
-        line.length < 220 &&
-        !/^[·•]?\s*[123]\s*度$/.test(line) &&
-        !/^(?:1st|2nd|3rd)(?:\s+degree)?$/i.test(line) &&
-        !lower.includes('位好友') &&
-        !lower.includes('connections') &&
-        !lower.includes('followers') &&
-        !lower.includes('共同好友') &&
-        !lower.includes('contact info') &&
-        line !== '联系方式'
-      );
-    }) ?? '';
-  }
+  const headline = latestJob?.title ?? '';
 
   const experienceSection = findSection('experience', ['工作经历', 'Experience']);
   const educationSection = findSection('education', ['教育经历', '教育背景', 'Education']);
   const experienceData = extractSectionItems(experienceSection, ['工作经历', 'Experience']);
   const educationData = extractSectionItems(educationSection, ['教育经历', '教育背景', 'Education']);
 
-  const companyFromIntro = firstText(intro, [
-    'a[href*="/company/"] span[aria-hidden="true"]',
-    'a[href*="/company/"]',
-    '.pv-text-details__right-panel-item-text',
-    '.pv-text-details__right-panel-item',
-  ]);
-  const firstExperienceItem = experienceSection?.querySelector('li') ?? null;
-  const companyFromExperience = firstExperienceItem
-    ? firstText(firstExperienceItem, [
-        'a[href*="/company/"] span[aria-hidden="true"]',
-        'a[href*="/company/"]',
-      ])
-    : '';
-
-  const company = cleanText(
-    (latestJob?.company || companyFromIntro || companyFromExperience).split('·')[0],
-  );
-  const semanticExperience = semanticExperienceItems
-    .map((lines) => lines.join('\n'))
-    .join('\n\n')
-    .slice(0, 6000);
+  const company = latestJob?.company ?? '';
+  const semanticExperience = semanticExperienceLines.join('\n').slice(0, 6000);
+  const semanticEducation = cleanLines(semanticEducationContainer, [
+    '教育经历',
+    '教育背景',
+    'Education',
+  ]).join('\n').slice(0, 6000);
 
   return {
     name,
     headline,
     company,
     experience: semanticExperience || experienceData.text,
-    education: educationData.text,
+    education: semanticEducation || educationData.text,
   };
 }

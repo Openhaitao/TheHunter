@@ -1,5 +1,12 @@
 export const PROFILE_DRAFT_KEY = 'thehunter.profileDraft.v1';
 export const FEISHU_WEBHOOK_KEY = 'thehunter.feishuWebhookUrl.v1';
+export const AI_CONFIG_KEY = 'thehunter.aiConfig.v1';
+
+export type AiConfig = {
+  baseUrl: string;
+  apiKey: string;
+  model: string;
+};
 
 function storageArea() {
   return browser.storage?.local;
