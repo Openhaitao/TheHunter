@@ -1,5 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
+  AI_CONFIG_KEY,
+  AI_PROMPT_KEY,
+  DEFAULT_AI_PROMPT,
   DEFAULT_FEISHU_FIELD_MAPPING,
   FEISHU_FIELD_MAPPING_KEY,
   FEISHU_WEBHOOK_KEY,
@@ -7,12 +10,21 @@ import {
   getLocalValue,
   removeLocalValue,
   setLocalValue,
+  type AiConfig,
+  type PromptConfig,
 } from '../lib/config';
-import { collectLinkedInDebugSnapshot, extractLinkedInProfileFromPage } from '../lib/linkedin';
+import { mapSnapshotWithAi } from '../lib/ai';
+import { collectLinkedInSemanticSnapshot } from '../lib/linkedin';
 
-type PageStatus = 'checking' | 'extracting' | 'detected' | 'extractError' | 'unsupported' | 'error';
+type PageStatus =
+  | 'checking'
+  | 'ready'
+  | 'extracting'
+  | 'detected'
+  | 'extractError'
+  | 'unsupported'
+  | 'error';
 type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
-type DebugStatus = 'idle' | 'copying' | 'copied' | 'error';
 
 type ProfileDraft = {
   name: string;
@@ -127,7 +139,6 @@ export default function ParsePage({
   const [manualOpen, setManualOpen] = useState(true);
   const [hydrated, setHydrated] = useState(false);
   const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
-  const [debugStatus, setDebugStatus] = useState<DebugStatus>('idle');
   const extractionRequest = useRef(0);
   const previousResetToken = useRef(0);
   const successTimer = useRef<number>();
@@ -157,39 +168,63 @@ export default function ParsePage({
     setStatus('extracting');
 
     try {
+      const [aiConfig, promptConfig] = await Promise.all([
+        getLocalValue<AiConfig>(AI_CONFIG_KEY),
+        getLocalValue<PromptConfig>(AI_PROMPT_KEY),
+      ]);
+      if (!aiConfig?.baseUrl || !aiConfig.apiKey || !aiConfig.model) {
+        setStatus('error');
+        onOpenSettings();
+        return;
+      }
+
       const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
       if (!tab?.id) throw new Error('No active tab');
 
       const [execution] = await browser.scripting.executeScript({
         target: { tabId: tab.id },
-        func: extractLinkedInProfileFromPage,
+        func: collectLinkedInSemanticSnapshot,
       });
 
       if (requestId !== extractionRequest.current) return;
-      const profile = execution?.result;
-      if (!profile) throw new Error('No profile data');
+      const snapshot = execution?.result;
+      if (!snapshot) throw new Error('No semantic snapshot');
+      const profile = await mapSnapshotWithAi(
+        snapshot,
+        aiConfig,
+        promptConfig?.content || DEFAULT_AI_PROMPT,
+      );
+      if (requestId !== extractionRequest.current) return;
+
+      const confidentValue = (key: string, value: string, threshold = 0.55) =>
+        (profile.confidence[key] ?? 0) >= threshold && profile.sourceExcerpt[key]?.trim()
+          ? value
+          : '';
+      const name = confidentValue('name', profile.name);
+      const title = confidentValue('title', profile.title, 0.6);
+      const company = confidentValue('company', profile.company, 0.6);
+      const experience = confidentValue('experience', profile.experience, 0.5);
+      const education = confidentValue('education', profile.education, 0.5);
 
       setDraft((current) => {
         const sameProfile = current.linkedinUrl === profileUrl;
         return {
           ...(sameProfile ? current : EMPTY_DRAFT),
-          name: profile.name,
-          title: profile.headline,
-          company: profile.company,
+          name,
+          title,
+          company,
           linkedinUrl: profileUrl,
-          experience: profile.experience,
-          education: profile.education,
+          experience,
+          education,
         };
       });
       setStatus(
-        profile.name && profile.headline && profile.company && profile.experience
-          ? 'detected'
-          : 'extractError',
+        name && title && company && experience ? 'detected' : 'extractError',
       );
     } catch {
-      if (requestId === extractionRequest.current) setStatus('extractError');
+      if (requestId === extractionRequest.current) setStatus('error');
     }
-  }, []);
+  }, [onOpenSettings]);
 
   const inspectActiveTab = useCallback(async (showChecking = false) => {
     if (showChecking) setStatus('checking');
@@ -208,10 +243,24 @@ export default function ParsePage({
           ? current
           : { ...EMPTY_DRAFT, linkedinUrl: profileUrl },
       );
-      await extractProfile(profileUrl);
+      setStatus('ready');
     } catch {
       setStatus('error');
     }
+  }, [readActiveTabUrl]);
+
+  const parseActiveProfile = useCallback(async () => {
+    const profileUrl = normalizeLinkedInProfileUrl(await readActiveTabUrl());
+    if (!profileUrl) {
+      setStatus('unsupported');
+      return;
+    }
+    setDraft((current) =>
+      current.linkedinUrl === profileUrl
+        ? current
+        : { ...EMPTY_DRAFT, linkedinUrl: profileUrl },
+    );
+    await extractProfile(profileUrl);
   }, [extractProfile, readActiveTabUrl]);
 
   useEffect(() => {
@@ -254,10 +303,10 @@ export default function ParsePage({
       setManualOpen(true);
       setDraft(EMPTY_DRAFT);
       await removeLocalValue(PROFILE_DRAFT_KEY);
-      await inspectActiveTab(true);
+      await parseActiveProfile();
       setHydrated(true);
     })();
-  }, [inspectActiveTab, resetToken]);
+  }, [parseActiveProfile, resetToken]);
 
   useEffect(() => () => window.clearTimeout(successTimer.current), []);
 
@@ -317,51 +366,20 @@ export default function ParsePage({
     }
   };
 
-  const copyDebugSnapshot = async () => {
-    setDebugStatus('copying');
-    try {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-      if (!tab?.id) throw new Error('No active tab');
-      const [execution] = await browser.scripting.executeScript({
-        target: { tabId: tab.id },
-        func: collectLinkedInDebugSnapshot,
-      });
-      if (typeof execution?.result !== 'string') throw new Error('No snapshot');
-      let copied = false;
-      try {
-        await navigator.clipboard.writeText(execution.result);
-        copied = true;
-      } catch {
-        const textarea = document.createElement('textarea');
-        textarea.value = execution.result;
-        textarea.style.position = 'fixed';
-        textarea.style.opacity = '0';
-        document.body.appendChild(textarea);
-        textarea.focus();
-        textarea.select();
-        copied = document.execCommand('copy');
-        textarea.remove();
-      }
-      if (!copied) throw new Error('Clipboard unavailable');
-      setDebugStatus('copied');
-      window.setTimeout(() => setDebugStatus('idle'), 2600);
-    } catch {
-      setDebugStatus('error');
-    }
-  };
-
   const statusLabel =
     status === 'checking'
       ? '正在检测当前页面…'
+      : status === 'ready'
+        ? 'LinkedIn 页面已就绪'
       : status === 'extracting'
-        ? '正在解析 LinkedIn 内容…'
+        ? '正在使用 AI 解析…'
         : status === 'extractError'
-          ? '解析未完成，可手动填写'
+          ? 'AI 解析不完整，可编辑或重试'
           : status === 'unsupported'
             ? '当前不是 LinkedIn 人物页，可手动填写'
             : status === 'error'
-              ? '暂时无法读取页面，可手动填写'
-              : '已解析 LinkedIn 内容';
+              ? 'AI 解析失败，请检查设置'
+              : 'AI 解析完成，请确认';
 
   const canSubmit = Boolean(draft.name.trim() && draft.linkedinUrl.trim());
 
@@ -384,16 +402,11 @@ export default function ParsePage({
           </span>
           <button
             type="button"
-            onClick={() => void copyDebugSnapshot()}
-            className="shrink-0 text-[#777670] hover:text-[#242421]"
+            onClick={() => void parseActiveProfile()}
+            disabled={status === 'extracting' || status === 'unsupported'}
+            className="shrink-0 text-[#65645f] underline decoration-[#c7c6c0] underline-offset-4 hover:text-[#242421] disabled:cursor-default disabled:opacity-40"
           >
-            {debugStatus === 'copying'
-              ? '复制中…'
-              : debugStatus === 'copied'
-                ? '已复制'
-                : debugStatus === 'error'
-                  ? '复制失败'
-                  : '复制调试信息'}
+            {status === 'extracting' ? '解析中…' : 'AI 解析'}
           </button>
         </div>
 

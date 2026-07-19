@@ -6,6 +6,62 @@ export type LinkedInProfileData = {
   education: string;
 };
 
+export type LinkedInSemanticSnapshot = {
+  url: string;
+  pageTitle: string;
+  visibleText: string;
+  semanticLinks: Array<{ href: string; text: string }>;
+};
+
+export async function collectLinkedInSemanticSnapshot(): Promise<LinkedInSemanticSnapshot> {
+  const clean = (value: string | null | undefined) =>
+    (value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
+  const originalScrollY = window.scrollY;
+  const scrollHeight = document.documentElement.scrollHeight;
+
+  for (const ratio of [0.3, 0.6, 1]) {
+    window.scrollTo({ top: scrollHeight * ratio, behavior: 'auto' });
+    await new Promise((resolve) => window.setTimeout(resolve, 180));
+  }
+  window.scrollTo({ top: originalScrollY, behavior: 'auto' });
+
+  const main = document.querySelector('main') ?? document.body;
+  const visibleText = clean((main as HTMLElement).innerText)
+    .split('\n')
+    .map(clean)
+    .filter((line, index, lines) => line && line !== lines[index - 1])
+    .join('\n')
+    .slice(0, 50000);
+
+  const semanticLinks: Array<{ href: string; text: string }> = [];
+  const seen = new Set<string>();
+  for (const anchor of main.querySelectorAll<HTMLAnchorElement>('a[href]')) {
+    let url: URL;
+    try {
+      url = new URL(anchor.href, location.href);
+    } catch {
+      continue;
+    }
+    if (!url.hostname.endsWith('linkedin.com')) continue;
+    if (!/(\/in\/|\/company\/|\/school\/|\/details\/)/.test(url.pathname)) continue;
+
+    const text = clean(anchor.innerText || anchor.textContent).slice(0, 800);
+    if (!text) continue;
+    const key = `${url.href}\n${text}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    semanticLinks.push({ href: url.href, text });
+    if (semanticLinks.length >= 120) break;
+  }
+
+  return {
+    url: location.href,
+    pageTitle: document.title,
+    visibleText,
+    semanticLinks,
+  };
+}
+
 export function collectLinkedInDebugSnapshot() {
   const clean = (value: string | null | undefined) =>
     (value ?? '').replace(/\u00a0/g, ' ').replace(/[ \t]+/g, ' ').trim();
