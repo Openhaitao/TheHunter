@@ -11,7 +11,7 @@ export default defineConfig({
   manifest: {
     name: 'TheHunter',
     description: 'LinkedIn 人才信息采集工具',
-    permissions: ['sidePanel'],
+    permissions: ['sidePanel', 'scripting'],
     host_permissions: ['https://www.linkedin.com/in/*'],
     action: { default_title: 'TheHunter - 打开侧边栏' },
     icons: {

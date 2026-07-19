@@ -114,12 +114,27 @@ export default function ParsePage() {
     setDraft((current) => ({ ...current, [key]: value }));
   };
 
+  const readActiveTabUrl = useCallback(async () => {
+    const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) return '';
+    if (tab.url) return tab.url;
+
+    try {
+      const [result] = await browser.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: () => window.location.href,
+      });
+      return typeof result?.result === 'string' ? result.result : '';
+    } catch {
+      return '';
+    }
+  }, []);
+
   const inspectActiveTab = useCallback(async (showChecking = false) => {
     if (showChecking) setStatus('checking');
 
     try {
-      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
-      const profileUrl = normalizeLinkedInProfileUrl(tab?.url ?? '');
+      const profileUrl = normalizeLinkedInProfileUrl(await readActiveTabUrl());
 
       if (!profileUrl) {
         setStatus('unsupported');
@@ -135,7 +150,7 @@ export default function ParsePage() {
     } catch {
       setStatus('error');
     }
-  }, []);
+  }, [readActiveTabUrl]);
 
   useEffect(() => {
     void inspectActiveTab(true);
