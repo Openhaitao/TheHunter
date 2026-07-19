@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FEISHU_WEBHOOK_KEY } from '../lib/config';
+import { FEISHU_WEBHOOK_KEY, getLocalValue, setLocalValue } from '../lib/config';
 
 type SaveState = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -8,8 +8,7 @@ export default function SettingsPage() {
   const [saveState, setSaveState] = useState<SaveState>('idle');
 
   useEffect(() => {
-    void browser.storage.local.get(FEISHU_WEBHOOK_KEY).then((stored) => {
-      const value = stored[FEISHU_WEBHOOK_KEY];
+    void getLocalValue<string>(FEISHU_WEBHOOK_KEY).then((value) => {
       if (typeof value === 'string') setWebhookUrl(value);
     });
   }, []);
@@ -26,7 +25,7 @@ export default function SettingsPage() {
       });
       if (!granted) throw new Error('Host permission denied');
 
-      await browser.storage.local.set({ [FEISHU_WEBHOOK_KEY]: url.toString() });
+      await setLocalValue(FEISHU_WEBHOOK_KEY, url.toString());
       setWebhookUrl(url.toString());
       setSaveState('saved');
     } catch {

@@ -1,5 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { FEISHU_WEBHOOK_KEY, PROFILE_DRAFT_KEY } from '../lib/config';
+import {
+  FEISHU_WEBHOOK_KEY,
+  PROFILE_DRAFT_KEY,
+  getLocalValue,
+  removeLocalValue,
+  setLocalValue,
+} from '../lib/config';
 import { extractLinkedInProfileFromPage } from '../lib/linkedin';
 
 type PageStatus = 'checking' | 'extracting' | 'detected' | 'extractError' | 'unsupported' | 'error';
@@ -205,9 +211,8 @@ export default function ParsePage({
   useEffect(() => {
     let cancelled = false;
 
-    void browser.storage.local.get(PROFILE_DRAFT_KEY).then(async (stored) => {
+    void getLocalValue<ProfileDraft>(PROFILE_DRAFT_KEY).then(async (savedDraft) => {
       if (cancelled) return;
-      const savedDraft = stored[PROFILE_DRAFT_KEY] as ProfileDraft | undefined;
 
       if (savedDraft?.linkedinUrl || savedDraft?.name) {
         setDraft({ ...EMPTY_DRAFT, ...savedDraft });
@@ -227,7 +232,7 @@ export default function ParsePage({
   useEffect(() => {
     if (!hydrated) return;
     const timeout = window.setTimeout(() => {
-      void browser.storage.local.set({ [PROFILE_DRAFT_KEY]: draft });
+      void setLocalValue(PROFILE_DRAFT_KEY, draft);
     }, 180);
     return () => window.clearTimeout(timeout);
   }, [draft, hydrated]);
@@ -242,7 +247,7 @@ export default function ParsePage({
       setSubmitStatus('idle');
       setManualOpen(false);
       setDraft(EMPTY_DRAFT);
-      await browser.storage.local.remove(PROFILE_DRAFT_KEY);
+      await removeLocalValue(PROFILE_DRAFT_KEY);
       await inspectActiveTab(true);
       setHydrated(true);
     })();
@@ -251,8 +256,7 @@ export default function ParsePage({
   useEffect(() => () => window.clearTimeout(successTimer.current), []);
 
   const submitToFeishu = async () => {
-    const stored = await browser.storage.local.get(FEISHU_WEBHOOK_KEY);
-    const webhookUrl = stored[FEISHU_WEBHOOK_KEY];
+    const webhookUrl = await getLocalValue<string>(FEISHU_WEBHOOK_KEY);
     if (typeof webhookUrl !== 'string' || !webhookUrl) {
       onOpenSettings();
       return;
