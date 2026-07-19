@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { FEISHU_WEBHOOK_KEY, PROFILE_DRAFT_KEY } from '../lib/config';
 import { extractLinkedInProfileFromPage } from '../lib/linkedin';
 
 type PageStatus = 'checking' | 'extracting' | 'detected' | 'extractError' | 'unsupported' | 'error';
+type SubmitStatus = 'idle' | 'submitting' | 'success' | 'error';
 
 type ProfileDraft = {
   name: string;
@@ -106,11 +108,21 @@ function SelectField({
   );
 }
 
-export default function ParsePage() {
+export default function ParsePage({
+  resetToken,
+  onOpenSettings,
+}: {
+  resetToken: number;
+  onOpenSettings: () => void;
+}) {
   const [status, setStatus] = useState<PageStatus>('checking');
   const [draft, setDraft] = useState<ProfileDraft>(EMPTY_DRAFT);
   const [manualOpen, setManualOpen] = useState(false);
+  const [hydrated, setHydrated] = useState(false);
+  const [submitStatus, setSubmitStatus] = useState<SubmitStatus>('idle');
   const extractionRequest = useRef(0);
+  const previousResetToken = useRef(0);
+  const successTimer = useRef<number>();
 
   const updateDraft = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -191,68 +203,120 @@ export default function ParsePage() {
   }, [extractProfile, readActiveTabUrl]);
 
   useEffect(() => {
-    void inspectActiveTab(true);
+    let cancelled = false;
 
-    const handleTabChange = () => void inspectActiveTab();
-    const handleTabUpdate = (_tabId: number, changeInfo: { status?: string; url?: string }) => {
-      if (changeInfo.url || changeInfo.status === 'complete') void inspectActiveTab();
-    };
+    void browser.storage.local.get(PROFILE_DRAFT_KEY).then(async (stored) => {
+      if (cancelled) return;
+      const savedDraft = stored[PROFILE_DRAFT_KEY] as ProfileDraft | undefined;
 
-    browser.tabs.onActivated.addListener(handleTabChange);
-    browser.tabs.onUpdated.addListener(handleTabUpdate);
+      if (savedDraft?.linkedinUrl || savedDraft?.name) {
+        setDraft({ ...EMPTY_DRAFT, ...savedDraft });
+        setStatus('detected');
+      } else {
+        await inspectActiveTab(true);
+      }
+
+      if (!cancelled) setHydrated(true);
+    });
 
     return () => {
-      browser.tabs.onActivated.removeListener(handleTabChange);
-      browser.tabs.onUpdated.removeListener(handleTabUpdate);
+      cancelled = true;
     };
   }, [inspectActiveTab]);
 
-  if (status === 'checking') {
-    return (
-      <div className="flex h-full items-center justify-center px-8 text-center text-xs text-[#8d8c86]">
-        正在检测当前页面…
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (!hydrated) return;
+    const timeout = window.setTimeout(() => {
+      void browser.storage.local.set({ [PROFILE_DRAFT_KEY]: draft });
+    }, 180);
+    return () => window.clearTimeout(timeout);
+  }, [draft, hydrated]);
 
-  if (status === 'unsupported') {
-    return (
-      <div className="flex h-full items-center justify-center px-8 text-center">
-        <div>
-          <p className="m-0 text-[13px] text-[#55544f]">打开 LinkedIn 人物页面</p>
-          <p className="mt-1.5 text-[11px] leading-5 text-[#9b9a94]">识别到 linkedin.com/in/ 页面后将自动开始</p>
-          <button
-            type="button"
-            onClick={() => void inspectActiveTab(true)}
-            className="mt-4 text-[11px] text-[#676660] underline decoration-[#c7c6c0] underline-offset-4 hover:text-[#242421]"
-          >
-            重新检测
-          </button>
-        </div>
-      </div>
-    );
-  }
+  useEffect(() => {
+    if (resetToken === previousResetToken.current) return;
+    previousResetToken.current = resetToken;
 
-  if (status === 'error') {
-    return (
-      <div className="flex h-full items-center justify-center px-8 text-center">
-        <div>
-          <p className="m-0 text-[13px] text-[#55544f]">暂时无法读取当前页面</p>
-          <button
-            type="button"
-            onClick={() => void inspectActiveTab(true)}
-            className="mt-4 text-[11px] text-[#676660] underline decoration-[#c7c6c0] underline-offset-4 hover:text-[#242421]"
-          >
-            重试
-          </button>
-        </div>
-      </div>
-    );
-  }
+    void (async () => {
+      extractionRequest.current += 1;
+      setHydrated(false);
+      setSubmitStatus('idle');
+      setManualOpen(false);
+      setDraft(EMPTY_DRAFT);
+      await browser.storage.local.remove(PROFILE_DRAFT_KEY);
+      await inspectActiveTab(true);
+      setHydrated(true);
+    })();
+  }, [inspectActiveTab, resetToken]);
+
+  useEffect(() => () => window.clearTimeout(successTimer.current), []);
+
+  const submitToFeishu = async () => {
+    const stored = await browser.storage.local.get(FEISHU_WEBHOOK_KEY);
+    const webhookUrl = stored[FEISHU_WEBHOOK_KEY];
+    if (typeof webhookUrl !== 'string' || !webhookUrl) {
+      onOpenSettings();
+      return;
+    }
+
+    setSubmitStatus('submitting');
+    try {
+      const response = await fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          姓名: draft.name,
+          职位: draft.title,
+          公司名称: draft.company,
+          'linkedin 链接': draft.linkedinUrl,
+          个人经历: draft.experience,
+          教育背景: draft.education,
+          联系方式: draft.contact,
+          关注度: draft.attention,
+          是否建联: draft.outreach,
+          备注: draft.notes,
+        }),
+      });
+
+      const responseText = await response.text();
+      let responseCode: number | undefined;
+      try {
+        const responseJson = JSON.parse(responseText) as { code?: number };
+        responseCode = responseJson.code;
+      } catch {
+        responseCode = undefined;
+      }
+
+      if (!response.ok || (typeof responseCode === 'number' && responseCode !== 0)) {
+        throw new Error('Webhook request failed');
+      }
+
+      setSubmitStatus('success');
+      window.clearTimeout(successTimer.current);
+      successTimer.current = window.setTimeout(() => setSubmitStatus('idle'), 2600);
+    } catch {
+      setSubmitStatus('error');
+    }
+  };
+
+  const statusLabel =
+    status === 'checking'
+      ? '正在检测当前页面…'
+      : status === 'extracting'
+        ? '正在解析 LinkedIn 内容…'
+        : status === 'extractError'
+          ? '解析未完成，可手动填写'
+          : status === 'unsupported'
+            ? '当前不是 LinkedIn 人物页，可手动填写'
+            : status === 'error'
+              ? '暂时无法读取页面，可手动填写'
+              : '已解析 LinkedIn 内容';
+
+  const canSubmit = Boolean(draft.name.trim() && draft.linkedinUrl.trim());
 
   return (
-    <div className="h-full overflow-y-auto">
-      <div className="mx-auto max-w-[460px] px-4 pb-8 pt-3.5">
+    <div className="flex h-full flex-col">
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <div className="mx-auto max-w-[460px] px-4 pb-8 pt-3.5">
         <div className="mb-5 flex items-center justify-between text-[11px]">
           <span className="flex items-center gap-2 text-[#777670]">
             <span
@@ -264,20 +328,8 @@ export default function ParsePage() {
                     : 'bg-[#6f8d70]'
               }`}
             />
-            {status === 'extracting'
-              ? '正在解析 LinkedIn 内容…'
-              : status === 'extractError'
-                ? '解析未完成，可手动填写'
-                : '已解析 LinkedIn 内容'}
+            {statusLabel}
           </span>
-          <button
-            type="button"
-            onClick={() => void inspectActiveTab(true)}
-            disabled={status === 'extracting'}
-            className="text-[#8a8983] hover:text-[#242421] disabled:cursor-default disabled:opacity-40"
-          >
-            重新解析
-          </button>
         </div>
 
         <div className="space-y-3.5">
@@ -362,6 +414,28 @@ export default function ParsePage() {
           )}
         </div>
       </div>
+      </div>
+
+      <button
+        type="button"
+        onClick={() => void submitToFeishu()}
+        disabled={!canSubmit || submitStatus === 'submitting'}
+        className={`h-11 w-full shrink-0 border-t border-[#cfcec8] text-[12px] font-medium transition-colors disabled:cursor-default ${
+          submitStatus === 'success'
+            ? 'bg-[#dce5da] text-[#365039]'
+            : submitStatus === 'error'
+              ? 'bg-[#eaded8] text-[#70483e]'
+              : 'bg-[#deddd8] text-[#292925] hover:bg-[#d4d3cd] disabled:bg-[#e9e8e3] disabled:text-[#aaa9a3]'
+        }`}
+      >
+        {submitStatus === 'submitting'
+          ? '正在提交…'
+          : submitStatus === 'success'
+            ? '提交成功'
+            : submitStatus === 'error'
+              ? '提交失败，点击重试'
+              : '提交到飞书多维表格'}
+      </button>
     </div>
   );
 }

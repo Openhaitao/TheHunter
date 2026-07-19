@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import ParsePage from '../../components/ParsePage';
+import SettingsPage from '../../components/SettingsPage';
 
 type Tool = 'parse' | 'settings';
 
@@ -39,6 +40,24 @@ function SettingsIcon() {
   );
 }
 
+function RefreshIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-[18px] w-[18px]"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <path d="M19 7v4h-4" />
+      <path d="M18.1 15.5A7 7 0 1 1 19 11" />
+    </svg>
+  );
+}
+
 function ToolButton({
   active,
   icon,
@@ -70,11 +89,22 @@ function ToolButton({
 
 export default function App() {
   const [tool, setTool] = useState<Tool>('parse');
+  const [resetToken, setResetToken] = useState(0);
+
+  const resetAndParse = () => {
+    setTool('parse');
+    setResetToken((token) => token + 1);
+  };
 
   return (
     <div className="flex h-full bg-[#f6f5f1] text-[#171717]">
       <main className="min-w-0 flex-1" aria-label={tool === 'parse' ? '解析' : '设置'}>
-        {tool === 'parse' && <ParsePage />}
+        <div className={tool === 'parse' ? 'h-full' : 'hidden'}>
+          <ParsePage resetToken={resetToken} onOpenSettings={() => setTool('settings')} />
+        </div>
+        <div className={tool === 'settings' ? 'h-full' : 'hidden'}>
+          <SettingsPage />
+        </div>
       </main>
 
       <nav
@@ -88,12 +118,24 @@ export default function App() {
           onClick={() => setTool('parse')}
         />
 
-        <ToolButton
-          active={tool === 'settings'}
-          icon={<SettingsIcon />}
-          label="设置"
-          onClick={() => setTool('settings')}
-        />
+        <div className="flex flex-col items-center gap-2">
+          <button
+            type="button"
+            aria-label="清空并重新解析"
+            title="清空并重新解析"
+            onClick={resetAndParse}
+            className="flex h-8 w-8 items-center justify-center text-[#aaa9a3] transition-colors hover:text-[#5f5e59]"
+          >
+            <RefreshIcon />
+          </button>
+
+          <ToolButton
+            active={tool === 'settings'}
+            icon={<SettingsIcon />}
+            label="设置"
+            onClick={() => setTool('settings')}
+          />
+        </div>
       </nav>
     </div>
   );
