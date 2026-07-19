@@ -1,6 +1,6 @@
 {
   "name": "thehunter",
-  "description": "LinkedIn 人才信息采集工具",
+  "description": "LinkedIn 人才与公司信息采集工具",
   "private": true,
   "version": "2.0.0",
   "type": "module",

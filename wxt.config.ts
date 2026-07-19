@@ -10,9 +10,9 @@ export default defineConfig({
   }),
   manifest: {
     name: 'TheHunter',
-    description: 'LinkedIn 人才信息采集工具',
+    description: 'LinkedIn 人才与公司信息采集工具',
     permissions: ['sidePanel', 'scripting', 'storage'],
-    host_permissions: ['https://www.linkedin.com/in/*'],
+    host_permissions: ['https://www.linkedin.com/in/*', 'https://www.linkedin.com/company/*'],
     optional_host_permissions: ['https://*/*'],
     action: { default_title: 'TheHunter - 打开侧边栏' },
     icons: {

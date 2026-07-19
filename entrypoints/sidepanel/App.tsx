@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import CompanyPage from '../../components/CompanyPage';
 import ParsePage from '../../components/ParsePage';
 import SettingsPage from '../../components/SettingsPage';
 
-type Tool = 'parse' | 'settings';
+type Tool = 'person' | 'company' | 'settings';
 
-function ParseIcon() {
+function PersonIcon() {
   return (
     <svg
       aria-hidden="true"
@@ -16,8 +17,17 @@ function ParseIcon() {
       strokeLinecap="round"
       strokeLinejoin="round"
     >
-      <path d="M4.5 8V5.5a1 1 0 0 1 1-1H8M16 4.5h2.5a1 1 0 0 1 1 1V8M19.5 16v2.5a1 1 0 0 1-1 1H16M8 19.5H5.5a1 1 0 0 1-1-1V16" />
-      <path d="M13.8 8.2c.3 1.15.85 1.7 2 2-.95.25-1.65.9-2 2-.3-1.1-.95-1.75-2-2 1.1-.3 1.7-.9 2-2Z" />
+      <circle cx="12" cy="8" r="3" />
+      <path d="M5.5 19c.7-4 2.8-6 6.5-6s5.8 2 6.5 6" />
+    </svg>
+  );
+}
+
+function CompanyIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="h-[18px] w-[18px]" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M5 20V6.5L12 4v16M12 8h7v12M3 20h18" />
+      <path d="M8 8h1M8 11h1M8 14h1M15 11h1M15 14h1" />
     </svg>
   );
 }
@@ -88,19 +98,63 @@ function ToolButton({
 }
 
 export default function App() {
-  const [tool, setTool] = useState<Tool>('parse');
-  const [resetToken, setResetToken] = useState(0);
+  const [tool, setTool] = useState<Tool>('person');
+  const [personResetToken, setPersonResetToken] = useState(0);
+  const [companyResetToken, setCompanyResetToken] = useState(0);
+
+  useEffect(() => {
+    const detectActiveTool = async () => {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) return;
+      let url = tab.url ?? '';
+      if (!url) {
+        try {
+          const [result] = await browser.scripting.executeScript({
+            target: { tabId: tab.id },
+            func: () => window.location.href,
+          });
+          url = typeof result?.result === 'string' ? result.result : '';
+        } catch {
+          return;
+        }
+      }
+      const detected = /linkedin\.com\/company\//.test(url)
+        ? 'company'
+        : /linkedin\.com\/in\//.test(url)
+          ? 'person'
+          : null;
+      if (detected) setTool((current) => current === 'settings' ? current : detected);
+    };
+    const onActivated = () => void detectActiveTool();
+    const onUpdated = (_tabId: number, changeInfo: { url?: string }) => {
+      if (changeInfo.url) void detectActiveTool();
+    };
+    void detectActiveTool();
+    browser.tabs.onActivated.addListener(onActivated);
+    browser.tabs.onUpdated.addListener(onUpdated);
+    return () => {
+      browser.tabs.onActivated.removeListener(onActivated);
+      browser.tabs.onUpdated.removeListener(onUpdated);
+    };
+  }, []);
 
   const resetAndParse = () => {
-    setTool('parse');
-    setResetToken((token) => token + 1);
+    if (tool === 'company') {
+      setCompanyResetToken((token) => token + 1);
+    } else {
+      setTool('person');
+      setPersonResetToken((token) => token + 1);
+    }
   };
 
   return (
     <div className="flex h-full bg-[#f6f5f1] text-[#171717]">
-      <main className="min-w-0 flex-1" aria-label={tool === 'parse' ? '解析' : '设置'}>
-        <div className={tool === 'parse' ? 'h-full' : 'hidden'}>
-          <ParsePage resetToken={resetToken} onOpenSettings={() => setTool('settings')} />
+      <main className="min-w-0 flex-1" aria-label={tool === 'person' ? '人物解析' : tool === 'company' ? '公司解析' : '设置'}>
+        <div className={tool === 'person' ? 'h-full' : 'hidden'}>
+          <ParsePage resetToken={personResetToken} onOpenSettings={() => setTool('settings')} />
+        </div>
+        <div className={tool === 'company' ? 'h-full' : 'hidden'}>
+          <CompanyPage resetToken={companyResetToken} onOpenSettings={() => setTool('settings')} />
         </div>
         <div className={tool === 'settings' ? 'h-full' : 'hidden'}>
           <SettingsPage />
@@ -111,12 +165,10 @@ export default function App() {
         aria-label="工具"
         className="flex w-11 shrink-0 flex-col items-center justify-between border-l border-[#e1e0db] bg-[#faf9f6] py-2"
       >
-        <ToolButton
-          active={tool === 'parse'}
-          icon={<ParseIcon />}
-          label="解析"
-          onClick={() => setTool('parse')}
-        />
+        <div className="flex flex-col items-center gap-2">
+          <ToolButton active={tool === 'person'} icon={<PersonIcon />} label="人物解析" onClick={() => setTool('person')} />
+          <ToolButton active={tool === 'company'} icon={<CompanyIcon />} label="公司解析" onClick={() => setTool('company')} />
+        </div>
 
         <div className="flex flex-col items-center gap-2">
           <button

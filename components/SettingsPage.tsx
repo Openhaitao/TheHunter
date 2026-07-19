@@ -2,7 +2,11 @@ import { useEffect, useState } from 'react';
 import {
   AI_CONFIG_KEY,
   AI_PROMPT_KEY,
+  COMPANY_FEISHU_FIELD_MAPPING_KEY,
+  COMPANY_FEISHU_TARGET_KEY,
+  COMPANY_FEISHU_WEBHOOK_KEY,
   DEFAULT_AI_PROMPT,
+  DEFAULT_COMPANY_FEISHU_FIELD_MAPPING,
   DEFAULT_FEISHU_FIELD_MAPPING,
   FEISHU_FIELD_MAPPING_KEY,
   FEISHU_TARGET_KEY,
@@ -142,9 +146,15 @@ export default function SettingsPage() {
     content: DEFAULT_AI_PROMPT,
     updatedAt: '',
   });
+  const [companyTargetUrl, setCompanyTargetUrl] = useState('');
+  const [companyWebhookUrl, setCompanyWebhookUrl] = useState('');
+  const [companyFieldMappingText, setCompanyFieldMappingText] = useState(
+    JSON.stringify(DEFAULT_COMPANY_FEISHU_FIELD_MAPPING, null, 2),
+  );
   const [aiSaveState, setAiSaveState] = useState<ActionState>('idle');
   const [testState, setTestState] = useState<ActionState>('idle');
   const [webhookSaveState, setWebhookSaveState] = useState<ActionState>('idle');
+  const [companyWebhookSaveState, setCompanyWebhookSaveState] = useState<ActionState>('idle');
   const [promptSaveState, setPromptSaveState] = useState<ActionState>('idle');
 
   useEffect(() => {
@@ -153,12 +163,29 @@ export default function SettingsPage() {
       getLocalValue<string>(FEISHU_WEBHOOK_KEY),
       getLocalValue<FeishuTarget>(FEISHU_TARGET_KEY),
       getLocalValue<Record<string, string>>(FEISHU_FIELD_MAPPING_KEY),
+      getLocalValue<string>(COMPANY_FEISHU_WEBHOOK_KEY),
+      getLocalValue<FeishuTarget>(COMPANY_FEISHU_TARGET_KEY),
+      getLocalValue<Record<string, string>>(COMPANY_FEISHU_FIELD_MAPPING_KEY),
       getLocalValue<PromptConfig>(AI_PROMPT_KEY),
-    ]).then(([savedAiConfig, savedWebhook, savedTarget, savedMapping, savedPrompt]) => {
+    ]).then(([
+      savedAiConfig,
+      savedWebhook,
+      savedTarget,
+      savedMapping,
+      savedCompanyWebhook,
+      savedCompanyTarget,
+      savedCompanyMapping,
+      savedPrompt,
+    ]) => {
       if (savedAiConfig) setAiConfig({ ...EMPTY_AI_CONFIG, ...savedAiConfig });
       if (typeof savedWebhook === 'string') setWebhookUrl(savedWebhook);
       if (savedTarget?.url) setTargetUrl(savedTarget.url);
       if (savedMapping) setFieldMappingText(JSON.stringify(savedMapping, null, 2));
+      if (typeof savedCompanyWebhook === 'string') setCompanyWebhookUrl(savedCompanyWebhook);
+      if (savedCompanyTarget?.url) setCompanyTargetUrl(savedCompanyTarget.url);
+      if (savedCompanyMapping) {
+        setCompanyFieldMappingText(JSON.stringify(savedCompanyMapping, null, 2));
+      }
       if (savedPrompt?.content) setPromptConfig(savedPrompt);
     });
   }, []);
@@ -282,6 +309,60 @@ export default function SettingsPage() {
     }
   };
 
+  const saveCompanyWebhook = async () => {
+    setCompanyWebhookSaveState('working');
+    try {
+      const normalizedUrl = normalizeHttpsUrl(companyWebhookUrl);
+      const target = parseFeishuTargetUrl(companyTargetUrl);
+      const mapping = JSON.parse(companyFieldMappingText) as unknown;
+      if (!mapping || typeof mapping !== 'object' || Array.isArray(mapping)) {
+        throw new Error('Invalid mapping');
+      }
+      const allowedFields = new Set([
+        'companyName',
+        'tagline',
+        'description',
+        'foundedDate',
+        'region',
+        'linkedinUrl',
+        'website',
+        'track',
+        'attention',
+        'legalName',
+        'founderIntro',
+      ]);
+      const normalizedMapping = Object.fromEntries(
+        Object.entries(mapping).map(([fieldName, template]) => [
+          fieldName,
+          typeof template === 'string' && allowedFields.has(template)
+            ? `{{${template}}}`
+            : template,
+        ]),
+      );
+      if (!Object.entries(normalizedMapping).every(([fieldName, template]) => {
+        if (!fieldName.trim() || typeof template !== 'string' || !template.trim()) return false;
+        return Array.from(template.matchAll(/{{\s*([A-Za-z][A-Za-z0-9]*)\s*}}/g)).every(
+          (match) => allowedFields.has(match[1]),
+        );
+      })) {
+        throw new Error('Invalid mapping fields');
+      }
+      await requestOriginPermission(normalizedUrl);
+      await setLocalValue(COMPANY_FEISHU_WEBHOOK_KEY, normalizedUrl);
+      await setLocalValue(COMPANY_FEISHU_TARGET_KEY, target);
+      await setLocalValue(
+        COMPANY_FEISHU_FIELD_MAPPING_KEY,
+        normalizedMapping as Record<string, string>,
+      );
+      setCompanyWebhookUrl(normalizedUrl);
+      setCompanyTargetUrl(target.url);
+      setCompanyFieldMappingText(JSON.stringify(normalizedMapping, null, 2));
+      setCompanyWebhookSaveState('success');
+    } catch {
+      setCompanyWebhookSaveState('error');
+    }
+  };
+
   const mappingPreview = (() => {
     try {
       const mapping = JSON.parse(fieldMappingText) as Record<string, string>;
@@ -311,6 +392,36 @@ export default function SettingsPage() {
     }
   })();
 
+  const companyMappingPreview = (() => {
+    try {
+      const mapping = JSON.parse(companyFieldMappingText) as Record<string, string>;
+      const target = parseFeishuTargetUrl(companyTargetUrl);
+      return JSON.stringify(
+        {
+          _thehunter: {
+            entity_type: 'company',
+            expected_table_id: target.tableId,
+            expected_view_id: target.viewId,
+          },
+          fields: mapping,
+        },
+        null,
+        2,
+      );
+    } catch {
+      return '字段映射 JSON 无效';
+    }
+  })();
+
+  const companyTargetSummary = (() => {
+    try {
+      const target = parseFeishuTargetUrl(companyTargetUrl);
+      return `已锁定公司表 ${target.tableId}${target.viewId ? ` · 视图 ${target.viewId}` : ''}`;
+    } catch {
+      return '请填写“公司追踪名单”的完整链接';
+    }
+  })();
+
   const aiReady = Boolean(
     aiConfig.baseUrl.trim() && aiConfig.apiKey.trim() && aiConfig.model.trim(),
   );
@@ -320,7 +431,7 @@ export default function SettingsPage() {
       <div className="mx-auto max-w-[460px]">
         <SettingsSection
           title="AI 解析"
-          description="OpenAI-compatible API；仅在点击 AI 解析时发送人物页内容。"
+          description="OpenAI-compatible API；仅在点击 AI 解析时发送当前人物或公司页内容。"
         >
           <div className="space-y-3.5">
             <SettingField
@@ -383,8 +494,8 @@ export default function SettingsPage() {
         </SettingsSection>
 
         <SettingsSection
-          title="飞书多维表格"
-          description="锁定唯一目标表，并配置 Webhook 与字段模板。"
+          title="飞书 · 人员主表"
+          description="锁定人员目标表，并配置 Webhook 与字段模板。"
         >
           <SettingField
             label="目标多维表格链接"
@@ -443,6 +554,79 @@ export default function SettingsPage() {
                 : webhookSaveState === 'success'
                   ? '已保存'
                   : webhookSaveState === 'error'
+                    ? '保存失败'
+                    : '保存'}
+            </button>
+          </div>
+        </SettingsSection>
+
+        <SettingsSection
+          title="飞书 · 公司追踪表"
+          description="公司解析使用独立目标表、Webhook 和字段模板。"
+        >
+          <SettingField
+            label="公司追踪名单链接"
+            type="url"
+            value={companyTargetUrl}
+            placeholder="https://...feishu.cn/wiki/...?table=tbl...&view=vew..."
+            onChange={(value) => {
+              setCompanyTargetUrl(value);
+              setCompanyWebhookSaveState('idle');
+            }}
+          />
+          <p className="mb-3.5 mt-1.5 text-[10px] leading-4 text-[#9a9993]">
+            {companyTargetSummary}
+          </p>
+
+          <SettingField
+            label="公司 Webhook"
+            type="url"
+            value={companyWebhookUrl}
+            placeholder="https://..."
+            onChange={(value) => {
+              setCompanyWebhookUrl(value);
+              setCompanyWebhookSaveState('idle');
+            }}
+          />
+
+          <div className="mt-3.5">
+            <SettingTextarea
+              label="公司请求体字段映射（JSON）"
+              value={companyFieldMappingText}
+              rows={11}
+              onChange={(value) => {
+                setCompanyFieldMappingText(value);
+                setCompanyWebhookSaveState('idle');
+              }}
+            />
+          </div>
+
+          <details className="mt-3 text-[10px] text-[#777670]">
+            <summary className="cursor-pointer select-none hover:text-[#242421]">请求体预览</summary>
+            <pre className="scrollbar-hidden mt-2 max-h-56 overflow-auto whitespace-pre-wrap rounded-[9px] border border-[#dfded8] bg-[#fbfaf7] p-3 font-mono text-[10px] leading-4 text-[#65645f]">
+              {companyMappingPreview}
+            </pre>
+          </details>
+
+          <div className="mt-2 flex items-start justify-between gap-4">
+            <p className="m-0 text-[10px] leading-4 text-[#9a9993]">
+              公司配置独立保存在本机。
+            </p>
+            <button
+              type="button"
+              onClick={() => void saveCompanyWebhook()}
+              disabled={
+                !companyTargetUrl.trim() ||
+                !companyWebhookUrl.trim() ||
+                companyWebhookSaveState === 'working'
+              }
+              className="shrink-0 text-[11px] text-[#65645f] underline decoration-[#c7c6c0] underline-offset-4 hover:text-[#242421] disabled:cursor-default disabled:opacity-40"
+            >
+              {companyWebhookSaveState === 'working'
+                ? '保存中…'
+                : companyWebhookSaveState === 'success'
+                  ? '已保存'
+                  : companyWebhookSaveState === 'error'
                     ? '保存失败'
                     : '保存'}
             </button>

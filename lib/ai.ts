@@ -11,6 +11,17 @@ export type AiProfileResult = {
   confidence: Record<string, number>;
 };
 
+export type AiCompanyResult = {
+  companyName: string;
+  tagline: string;
+  description: string;
+  foundedDate: string;
+  region: string;
+  website: string;
+  sourceExcerpt: Record<string, string>;
+  confidence: Record<string, number>;
+};
+
 type ChatCompletion = {
   choices?: Array<{ message?: { content?: string } }>;
 };
@@ -26,11 +37,11 @@ function parseJsonContent(content: string) {
 const textValue = (value: unknown, maxLength: number) =>
   (typeof value === 'string' ? value.trim() : '').slice(0, maxLength);
 
-export async function mapSnapshotWithAi(
+async function requestJsonMapping(
   snapshot: LinkedInSemanticSnapshot,
   config: AiConfig,
   systemPrompt: string,
-): Promise<AiProfileResult> {
+) {
   const endpoint = `${config.baseUrl.replace(/\/+$/, '')}/chat/completions`;
   const controller = new AbortController();
   const timeout = window.setTimeout(() => controller.abort(), 45000);
@@ -63,40 +74,67 @@ export async function mapSnapshotWithAi(
     let response = await request(true);
     if (response.status === 400) response = await request(false);
     if (!response.ok) throw new Error(`AI request failed: ${response.status}`);
-
     const completion = (await response.json()) as ChatCompletion;
     const content = completion.choices?.[0]?.message?.content;
     if (!content) throw new Error('AI returned no content');
-    const parsed = parseJsonContent(content);
-
-    const sourceExcerptRaw = parsed.source_excerpt;
-    const confidenceRaw = parsed.confidence;
-    const sourceExcerpt =
-      sourceExcerptRaw && typeof sourceExcerptRaw === 'object' && !Array.isArray(sourceExcerptRaw)
-        ? Object.fromEntries(
-            Object.entries(sourceExcerptRaw).map(([key, value]) => [key, textValue(value, 800)]),
-          )
-        : {};
-    const confidence =
-      confidenceRaw && typeof confidenceRaw === 'object' && !Array.isArray(confidenceRaw)
-        ? Object.fromEntries(
-            Object.entries(confidenceRaw).map(([key, value]) => [
-              key,
-              typeof value === 'number' ? Math.max(0, Math.min(1, value)) : 0,
-            ]),
-          )
-        : {};
-
-    return {
-      name: textValue(parsed.name, 300),
-      title: textValue(parsed.title, 500),
-      company: textValue(parsed.company, 500),
-      experience: textValue(parsed.experience, 8000),
-      education: textValue(parsed.education, 6000),
-      sourceExcerpt,
-      confidence,
-    };
+    return parseJsonContent(content);
   } finally {
     window.clearTimeout(timeout);
   }
+}
+
+function parseEvidence(parsed: Record<string, unknown>) {
+  const sourceExcerptRaw = parsed.source_excerpt;
+  const confidenceRaw = parsed.confidence;
+  const sourceExcerpt =
+    sourceExcerptRaw && typeof sourceExcerptRaw === 'object' && !Array.isArray(sourceExcerptRaw)
+      ? Object.fromEntries(
+          Object.entries(sourceExcerptRaw).map(([key, value]) => [key, textValue(value, 800)]),
+        )
+      : {};
+  const confidence =
+    confidenceRaw && typeof confidenceRaw === 'object' && !Array.isArray(confidenceRaw)
+      ? Object.fromEntries(
+          Object.entries(confidenceRaw).map(([key, value]) => [
+            key,
+            typeof value === 'number' ? Math.max(0, Math.min(1, value)) : 0,
+          ]),
+        )
+      : {};
+  return { sourceExcerpt, confidence };
+}
+
+export async function mapSnapshotWithAi(
+  snapshot: LinkedInSemanticSnapshot,
+  config: AiConfig,
+  systemPrompt: string,
+): Promise<AiProfileResult> {
+  const parsed = await requestJsonMapping(snapshot, config, systemPrompt);
+  const evidence = parseEvidence(parsed);
+  return {
+    name: textValue(parsed.name, 300),
+    title: textValue(parsed.title, 500),
+    company: textValue(parsed.company, 500),
+    experience: textValue(parsed.experience, 8000),
+    education: textValue(parsed.education, 6000),
+    ...evidence,
+  };
+}
+
+export async function mapCompanySnapshotWithAi(
+  snapshot: LinkedInSemanticSnapshot,
+  config: AiConfig,
+  systemPrompt: string,
+): Promise<AiCompanyResult> {
+  const parsed = await requestJsonMapping(snapshot, config, systemPrompt);
+  const evidence = parseEvidence(parsed);
+  return {
+    companyName: textValue(parsed.company_name, 400),
+    tagline: textValue(parsed.tagline, 1000),
+    description: textValue(parsed.description, 8000),
+    foundedDate: textValue(parsed.founded_date, 100),
+    region: textValue(parsed.region, 200),
+    website: textValue(parsed.website, 1000),
+    ...evidence,
+  };
 }
