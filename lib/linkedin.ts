@@ -4,7 +4,6 @@ export type LinkedInProfileData = {
   company: string;
   experience: string;
   education: string;
-  contact: string;
 };
 
 export function collectLinkedInDebugSnapshot() {
@@ -159,85 +158,6 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     .split(/\s+[–—-]\s+/)[0]
     .trim();
 
-  const extractContact = async () => {
-    const findContactDialog = () =>
-      Array.from(document.querySelectorAll('[role="dialog"]')).find((dialog) => {
-        const text = cleanText(dialog.querySelector('h2')?.textContent ?? dialog.textContent).toLowerCase();
-        return text.includes('联系方式') || text.includes('contact info');
-      }) ?? null;
-
-    let dialog = findContactDialog();
-    let openedByExtractor = false;
-
-    if (!dialog) {
-      const contactLabel = Array.from(document.querySelectorAll<HTMLElement>('main *')).find(
-        (element) =>
-          element.children.length === 0 &&
-          /^(联系方式|contact info)$/i.test(cleanText(element.innerText || element.textContent)),
-      );
-      const contactTrigger =
-        document.querySelector<HTMLElement>('a[href*="/overlay/contact-info/"]') ??
-        contactLabel?.closest<HTMLElement>('a, button, [role="button"], [role="link"]') ??
-        contactLabel;
-      if (contactTrigger) {
-        contactTrigger.click();
-        openedByExtractor = true;
-        dialog = await new Promise<Element | null>((resolve) => {
-          const existing = findContactDialog();
-          if (existing) {
-            resolve(existing);
-            return;
-          }
-
-          const observer = new MutationObserver(() => {
-            const contactDialog = findContactDialog();
-            if (!contactDialog) return;
-            observer.disconnect();
-            window.clearTimeout(timeout);
-            resolve(contactDialog);
-          });
-          const timeout = window.setTimeout(() => {
-            observer.disconnect();
-            resolve(findContactDialog());
-          }, 3500);
-          observer.observe(document.documentElement, { childList: true, subtree: true });
-        });
-      }
-    }
-
-    if (!dialog) return '';
-
-    const unique = (values: string[]) => Array.from(new Set(values.filter(Boolean)));
-    const emails = unique(
-      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="mailto:"]')).map((link) =>
-        cleanText(decodeURIComponent(link.href.replace(/^mailto:/i, '').split('?')[0])),
-      ),
-    );
-    const phones = unique(
-      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="tel:"]')).map((link) =>
-        cleanText(decodeURIComponent(link.href.replace(/^tel:/i, ''))),
-      ),
-    );
-    const websites = unique(
-      Array.from(dialog.querySelectorAll<HTMLAnchorElement>('a[href^="http"]'))
-        .map((link) => link.href)
-        .filter((href) => !href.includes('linkedin.com/in/')),
-    );
-
-    if (openedByExtractor) {
-      const dismiss = dialog.querySelector<HTMLElement>(
-        'button[aria-label*="关闭"], button[aria-label*="Dismiss"], .artdeco-modal__dismiss',
-      );
-      dismiss?.click();
-    }
-
-    return [
-      ...emails.map((value) => `邮箱: ${value}`),
-      ...phones.map((value) => `电话: ${value}`),
-      ...websites.map((value) => `网站: ${value}`),
-    ].join('\n');
-  };
-
   await waitForElement('main');
 
   const main = document.querySelector('main') ?? document.documentElement;
@@ -256,6 +176,36 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     },
   );
   const identityLines = cleanLines(identityAnchor ?? null);
+  const semanticExperienceItems: string[][] = [];
+  const seenExperienceItems = new Set<string>();
+  for (const link of document.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]')) {
+    const lines = cleanLines(link);
+    if (lines.length < 2) continue;
+    if (!lines.some((line) => /(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line))) {
+      continue;
+    }
+
+    const key = lines.join('\n');
+    if (seenExperienceItems.has(key)) continue;
+    seenExperienceItems.add(key);
+    semanticExperienceItems.push(lines);
+  }
+
+  const latestJob = (() => {
+    for (const lines of semanticExperienceItems) {
+      const companyAndType = lines.find((line, index) => {
+        if (index === 0 || !line.includes('·')) return false;
+        return !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line);
+      });
+      if (companyAndType) {
+        return {
+          title: lines[0],
+          company: cleanText(companyAndType.split('·')[0]),
+        };
+      }
+    }
+    return null;
+  })();
   const intro =
     nameElement?.closest('section') ??
     document.querySelector('a[href*="/overlay/contact-info/"]')?.closest('section') ??
@@ -271,7 +221,7 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
     'main h1',
   ]) || identityLines[0] || titleName;
 
-  let headline = firstText(intro, [
+  let headline = latestJob?.title || firstText(intro, [
     '.text-body-medium.break-words',
     '.pv-text-details__left-panel .text-body-medium',
     '.top-card-layout__headline',
@@ -320,39 +270,19 @@ export async function extractLinkedInProfileFromPage(): Promise<LinkedInProfileD
       ])
     : '';
 
-  const companyFromSemanticLink = (() => {
-    const links = Array.from(document.querySelectorAll<HTMLAnchorElement>('a[href*="/company/"]'));
-    for (const link of links) {
-      const lines = cleanLines(link);
-      if (lines.length === 0) continue;
-
-      const companyAndType = lines.find((line, index) => {
-        if (index === 0 || !line.includes('·')) return false;
-        return !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(line);
-      });
-      if (companyAndType) return cleanText(companyAndType.split('·')[0]);
-
-      if (
-        lines.length <= 2 &&
-        !/(?:19|20)\d{2}|个月|\bmonths?\b|\byears?\b/i.test(lines[0])
-      ) {
-        return lines[0];
-      }
-    }
-    return '';
-  })();
-
   const company = cleanText(
-    (companyFromIntro || companyFromExperience || companyFromSemanticLink).split('·')[0],
+    (latestJob?.company || companyFromIntro || companyFromExperience).split('·')[0],
   );
-  const contact = await extractContact();
+  const semanticExperience = semanticExperienceItems
+    .map((lines) => lines.join('\n'))
+    .join('\n\n')
+    .slice(0, 6000);
 
   return {
     name,
     headline,
     company,
-    experience: experienceData.text,
+    experience: semanticExperience || experienceData.text,
     education: educationData.text,
-    contact,
   };
 }

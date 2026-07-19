@@ -177,7 +177,6 @@ export default function ParsePage({
           linkedinUrl: profileUrl,
           experience: profile.experience,
           education: profile.education,
-          contact: profile.contact || (sameProfile ? current.contact : ''),
         };
       });
       setStatus('detected');
@@ -312,7 +311,22 @@ export default function ParsePage({
         func: collectLinkedInDebugSnapshot,
       });
       if (typeof execution?.result !== 'string') throw new Error('No snapshot');
-      await navigator.clipboard.writeText(execution.result);
+      let copied = false;
+      try {
+        await navigator.clipboard.writeText(execution.result);
+        copied = true;
+      } catch {
+        const textarea = document.createElement('textarea');
+        textarea.value = execution.result;
+        textarea.style.position = 'fixed';
+        textarea.style.opacity = '0';
+        document.body.appendChild(textarea);
+        textarea.focus();
+        textarea.select();
+        copied = document.execCommand('copy');
+        textarea.remove();
+      }
+      if (!copied) throw new Error('Clipboard unavailable');
       setDebugStatus('copied');
       window.setTimeout(() => setDebugStatus('idle'), 2600);
     } catch {
@@ -392,14 +406,6 @@ export default function ParsePage({
             rows={3}
             placeholder="解析后自动填入教育经历"
           />
-          <Field
-            label="联系方式"
-            value={draft.contact}
-            onChange={(value) => updateDraft('contact', value)}
-            multiline
-            rows={3}
-            placeholder="解析后自动填入邮箱、电话或网站"
-          />
         </div>
 
         <div className="mt-6 border-t border-[#dfded8] pt-4">
@@ -415,6 +421,15 @@ export default function ParsePage({
 
           {manualOpen && (
             <div className="mt-4 space-y-3.5">
+              <Field
+                label="联系方式"
+                value={draft.contact}
+                onChange={(value) => updateDraft('contact', value)}
+                multiline
+                rows={3}
+                placeholder="手动填写邮箱、电话或网站"
+              />
+
               <SelectField
                 label="关注度"
                 value={draft.attention}
