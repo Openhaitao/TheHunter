@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { extractLinkedInProfileFromPage } from '../lib/linkedin';
 
-type PageStatus = 'checking' | 'detected' | 'unsupported' | 'error';
+type PageStatus = 'checking' | 'extracting' | 'detected' | 'extractError' | 'unsupported' | 'error';
 
 type ProfileDraft = {
   name: string;
@@ -109,6 +110,7 @@ export default function ParsePage() {
   const [status, setStatus] = useState<PageStatus>('checking');
   const [draft, setDraft] = useState<ProfileDraft>(EMPTY_DRAFT);
   const [manualOpen, setManualOpen] = useState(false);
+  const extractionRequest = useRef(0);
 
   const updateDraft = <K extends keyof ProfileDraft>(key: K, value: ProfileDraft[K]) => {
     setDraft((current) => ({ ...current, [key]: value }));
@@ -130,6 +132,41 @@ export default function ParsePage() {
     }
   }, []);
 
+  const extractProfile = useCallback(async (profileUrl: string) => {
+    const requestId = ++extractionRequest.current;
+    setStatus('extracting');
+
+    try {
+      const [tab] = await browser.tabs.query({ active: true, currentWindow: true });
+      if (!tab?.id) throw new Error('No active tab');
+
+      const [execution] = await browser.scripting.executeScript({
+        target: { tabId: tab.id },
+        func: extractLinkedInProfileFromPage,
+      });
+
+      if (requestId !== extractionRequest.current) return;
+      const profile = execution?.result;
+      if (!profile) throw new Error('No profile data');
+
+      setDraft((current) => {
+        const sameProfile = current.linkedinUrl === profileUrl;
+        return {
+          ...(sameProfile ? current : EMPTY_DRAFT),
+          name: profile.name,
+          title: profile.headline,
+          company: profile.company,
+          linkedinUrl: profileUrl,
+          experience: profile.experience,
+          education: profile.education,
+        };
+      });
+      setStatus('detected');
+    } catch {
+      if (requestId === extractionRequest.current) setStatus('extractError');
+    }
+  }, []);
+
   const inspectActiveTab = useCallback(async (showChecking = false) => {
     if (showChecking) setStatus('checking');
 
@@ -137,6 +174,7 @@ export default function ParsePage() {
       const profileUrl = normalizeLinkedInProfileUrl(await readActiveTabUrl());
 
       if (!profileUrl) {
+        extractionRequest.current += 1;
         setStatus('unsupported');
         return;
       }
@@ -146,11 +184,11 @@ export default function ParsePage() {
           ? current
           : { ...EMPTY_DRAFT, linkedinUrl: profileUrl },
       );
-      setStatus('detected');
+      await extractProfile(profileUrl);
     } catch {
       setStatus('error');
     }
-  }, [readActiveTabUrl]);
+  }, [extractProfile, readActiveTabUrl]);
 
   useEffect(() => {
     void inspectActiveTab(true);
@@ -217,15 +255,28 @@ export default function ParsePage() {
       <div className="mx-auto max-w-[460px] px-4 pb-8 pt-3.5">
         <div className="mb-5 flex items-center justify-between text-[11px]">
           <span className="flex items-center gap-2 text-[#777670]">
-            <span className="h-1.5 w-1.5 rounded-full bg-[#6f8d70]" />
-            已识别 LinkedIn 人物页
+            <span
+              className={`h-1.5 w-1.5 rounded-full ${
+                status === 'extractError'
+                  ? 'bg-[#b28a64]'
+                  : status === 'extracting'
+                    ? 'animate-pulse bg-[#9a9993]'
+                    : 'bg-[#6f8d70]'
+              }`}
+            />
+            {status === 'extracting'
+              ? '正在解析 LinkedIn 内容…'
+              : status === 'extractError'
+                ? '解析未完成，可手动填写'
+                : '已解析 LinkedIn 内容'}
           </span>
           <button
             type="button"
             onClick={() => void inspectActiveTab(true)}
-            className="text-[#8a8983] hover:text-[#242421]"
+            disabled={status === 'extracting'}
+            className="text-[#8a8983] hover:text-[#242421] disabled:cursor-default disabled:opacity-40"
           >
-            重新检测
+            重新解析
           </button>
         </div>
 
