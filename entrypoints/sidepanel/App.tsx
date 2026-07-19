@@ -56,10 +56,10 @@ function ToolButton({
       aria-pressed={active}
       title={label}
       onClick={onClick}
-      className={`flex h-9 w-9 items-center justify-center rounded-[10px] transition-colors ${
+      className={`flex h-9 w-9 items-center justify-center transition-colors ${
         active
-          ? 'bg-[#ecebe6] text-[#242421]'
-          : 'text-[#aaa9a3] hover:bg-[#f0efeb] hover:text-[#4a4945]'
+          ? 'text-[#242421]'
+          : 'text-[#aaa9a3] hover:text-[#5f5e59]'
       }`}
     >
       {icon}
